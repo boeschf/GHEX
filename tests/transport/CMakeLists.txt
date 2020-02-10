@@ -40,3 +40,29 @@ if (GHEX_USE_UCP)
 
     endforeach(t_ ${_tests_ucx})
 endif()
+
+if (USE_GPU)
+    set(_cuda_tests test_low_level)
+
+    foreach(t_ ${_cuda_tests})
+        add_executable( ${t_}_cuda ./${t_}.cu )
+        target_link_libraries(${t_}_cuda gtest_main_mt)
+        add_test(
+            NAME ${t_}_cuda
+            COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${MPIEXEC_PREFLAGS} ${t_}_cuda ${MPIEXEC_POSTFLAGS}
+        )
+
+        if (GHEX_USE_UCP)
+            add_executable( ${t_}_cuda_ucx ./${t_}.cu )
+            target_link_libraries(${t_}_cuda_ucx gtest_main_ucx)
+            target_compile_definitions(${t_}_cuda_ucx PUBLIC GHEX_TEST_USE_UCX)
+            if (GHEX_USE_PMIX)
+                target_compile_definitions(${t_}_cuda_ucx PRIVATE GHEX_USE_PMI)
+            endif()
+            add_test(
+                NAME ${t_}_cuda_ucx
+                COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${MPIEXEC_PREFLAGS} ${t_}_cuda_ucx ${MPIEXEC_POSTFLAGS}
+            )
+        endif()
+    endforeach(t_ ${_cuda_tests})
+endif()
