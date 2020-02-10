@@ -10,6 +10,10 @@
  */
 #include <ghex/threads/none/primitives.hpp>
 #include <ghex/allocator/cuda_allocator.hpp>
+#ifdef __CUDACC__
+#include <gridtools/common/cuda_util.hpp>
+#include <gridtools/common/host_device.hpp>
+#endif
 #include <vector>
 #include <iomanip>
 #include <utility>
