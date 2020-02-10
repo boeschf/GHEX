@@ -147,19 +147,19 @@ TEST(low_level_cuda, basic_unidirectional_HD) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     auto context_ptr = gridtools::ghex::tl::context_factory<transport,threading>::create(1, MPI_COMM_WORLD);
     auto& context = *context_ptr;
-    EXPECT_TRUE( check_msg( basic_unidirectional_host_device(context) ) );
+    EXPECT_TRUE( check_msg( test_unidirectional_host_device(context) ) );
 }
 
 TEST(low_level_cuda, basic_unidirectional_DH) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     auto context_ptr = gridtools::ghex::tl::context_factory<transport,threading>::create(1, MPI_COMM_WORLD);
     auto& context = *context_ptr;
-    EXPECT_TRUE( check_msg( basic_unidirectional_device_host(context) ) );
+    EXPECT_TRUE( check_msg( test_unidirectional_device_host(context) ) );
 }
 
 TEST(low_level_cuda, basic_unidirectional_DD) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     auto context_ptr = gridtools::ghex::tl::context_factory<transport,threading>::create(1, MPI_COMM_WORLD);
     auto& context = *context_ptr;
-    EXPECT_TRUE( check_msg( basic_unidirectional_device_device(context) ) );
+    EXPECT_TRUE( check_msg( test_unidirectional_device_device(context) ) );
 }
