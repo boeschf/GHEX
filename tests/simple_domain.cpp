@@ -202,39 +202,80 @@ TEST(simple_domain, exchange)
 
 }
 
+
+
+
+
+// simple test from here:
+// ----------------------
+
+#ifdef __CUDACC__
+template <class T>
+struct cuda_allocator {
+    using T value_type = T;
+    cuda_allocator() = default;
+    template <class U> constexpr cuda_allocator(const cuda_allocator<U>&) noexcept {}
+ 
+    [[nodiscard]] T* allocate(std::size_t n) {
+        T* ptr = nullptr;
+        cudaMalloc((void**)&ptr, n*sizeof(T)));
+        return ptr;
+    }
+    void deallocate(T* p, std::size_t) noexcept { cuddaFree(p); }
+};
+template <class T, class U>
+bool operator==(const cuda_allocator <T>&, const cuda_allocator <U>&) { return true; }
+template <class T, class U>
+bool operator!=(const cuda_allocator <T>&, const cuda_allocator <U>&) { return false; }
+using msg_buffer = std::vector<unsigned char, cuda_allocator>;
+#else
+using msg_buffer = std::vector<unsigned char>;
+#endif
+
+
+#define RAW_MPI
+
+#ifdef RAW_MPI
+// use raw MPI calls
+#define SEND(request, buffer, dst, tag, comm)                                    \
+    MPI_Request request;                                                         \
+    MPI_Isend(buffer.data(), buffer.size(), MPI_BYTE, dst, tag, comm, &request);
+#define RECV(request, buffer, dst, tag, comm)                                    \
+    MPI_Request request;                                                         \
+    MPI_Irecv(buffer.data(), buffer.size(), MPI_BYTE, dst, tag, comm, &request);
+#define COMM MPI_COMM_WORLD
+#define WAIT(request) \
+    MPI_Wait(&request, MPI_STATUS_IGNORE);
+#else
+// use GHEX low-level calls
+#define SEND(request, buffer, dst, tag, comm)                                    \
+    auto request = comm.send(buffer, dst, tag);
+#define RECV(request, buffer, src, tag, comm)                                    \
+    auto request = comm.recv(buffer, src, tag);
+#define COMM comm
+#define WAIT(request) \
+    request.wait();
+#endif
+
+
 TEST(simple_domain, manual_exchange)
 {
+#ifndef RAW_MPI
     auto context_ptr = ghex::tl::context_factory<transport,threading>::create(1, MPI_COMM_WORLD);
     auto& context = *context_ptr;
+    auto comm = context.get_communicator(context.get_token());
+#endif
 
     using T = double;
     const int s = 10;
     const int b = 2;
-    const int num_cells = (s+2*b)*(s+2*b);
-    const std::array<int, 2> offset = {b,b};
-    const std::array<int, 2> extent = {s+2*b, s+2*b};
-    const int rank       = context.rank();
-    const int left_rank  = (context.rank()+context.size()-1)%context.size();
-    const int right_rank = (context.rank()+1)%context.size();
 
-    // make one field on the cpu
-    std::vector<T> raw_field_cpu(num_cells);
-    fill_field(s, b, rank*s*s, raw_field_cpu);
-    //print_field(s, b, raw_field_cpu);
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    const int left_rank  = (rank+size-1)%size;
+    const int right_rank = (rank+1)%size;
 
-    auto comm = context.get_communicator(context.get_token());
-
-#ifdef __CUDACC__
-    const int mem_size = num_cells*sizeof(T);
-    // allocate memory on gpu
-    T* gpu_ptr;
-    GT_CUDA_CHECK(cudaMalloc((void**)&gpu_ptr, mem_size);
-    // transfer memory to the gpu
-    GT_CUDA_CHECK(cudaMemcpy(gpu_ptr, raw_field_cpu.data(), mem_size, cudaMemcpyHostToDevice));
-    using msg_buffer = ghex::tl::message_buffer<gridtools::ghex::allocator::cuda::allocator<unsigned char>>;
-#else
-    using msg_buffer = ghex::tl::message_buffer<std::allocator<unsigned char>>;
-#endif
     // make buffers for sending
     msg_buffer left_top_send(b*b*sizeof(T));
     msg_buffer right_top_send(b*b*sizeof(T));
@@ -244,6 +285,7 @@ TEST(simple_domain, manual_exchange)
     msg_buffer right_send(b*s*sizeof(T));
     msg_buffer top_send(b*s*sizeof(T));
     msg_buffer bottom_send(b*s*sizeof(T));
+
     // make buffers for receiving
     msg_buffer left_top_recv(b*b*sizeof(T));
     msg_buffer right_top_recv(b*b*sizeof(T));
@@ -254,61 +296,37 @@ TEST(simple_domain, manual_exchange)
     msg_buffer top_recv(b*s*sizeof(T));
     msg_buffer bottom_recv(b*s*sizeof(T));
 
-    auto fut_01 = comm.recv(left_top_recv, left_rank, 0);
-    auto fut_02 = comm.send(right_bottom_send, right_rank, 0);
+    RECV(req_01, left_top_recv,     left_rank,  0, COMM)
+    SEND(req_02, right_bottom_send, right_rank, 0, COMM)
+    RECV(req_03, left_bottom_recv,  left_rank,  1, COMM)
+    SEND(req_04, right_top_send,    right_rank, 1, COMM)
+    RECV(req_05, left_recv,         left_rank,  2, COMM)
+    SEND(req_06, right_send,        right_rank, 2, COMM)
+    RECV(req_07, top_recv,          rank,       3, COMM)
+    SEND(req_08, bottom_send,       rank,       3, COMM)
+    RECV(req_09, bottom_recv,       rank,       4, COMM)
+    SEND(req_10, top_send,          rank,       4, COMM)
+    RECV(req_11, right_top_recv,    right_rank, 5, COMM)
+    SEND(req_12, left_bottom_send,  left_rank,  5, COMM)
+    RECV(req_13, right_bottom_recv, right_rank, 6, COMM)
+    SEND(req_14, left_top_send,     left_rank,  6, COMM)
+    RECV(req_15, right_recv,        right_rank, 7, COMM)
+    SEND(req_16, left_send,         left_rank,  7, COMM)
 
-    auto fut_03 = comm.recv(left_bottom_recv, left_rank, 1);
-    auto fut_04 = comm.send(right_top_send, right_rank, 1);
-
-    auto fut_05 = comm.recv(left_recv, left_rank, 2);
-    auto fut_06 = comm.send(right_send, right_rank, 2);
-
-    auto fut_07 = comm.recv(top_recv, rank, 3);
-    auto fut_08 = comm.send(bottom_send, rank, 3);
-
-    auto fut_09 = comm.recv(bottom_recv, rank, 4);
-    auto fut_10 = comm.send(top_send, rank, 4);
-
-    auto fut_11 = comm.recv(right_top_recv, right_rank, 5);
-    auto fut_12 = comm.send(left_bottom_send, left_rank, 5);
-
-    auto fut_13 = comm.recv(right_bottom_recv, right_rank, 6);
-    auto fut_14 = comm.send(left_top_send, left_rank, 6);
-
-    auto fut_15 = comm.recv(right_recv, right_rank, 7);
-    auto fut_16 = comm.send(left_send, left_rank, 7);
-
-    fut_01.wait();
-    fut_02.wait();
-    fut_03.wait();
-    fut_04.wait();
-    fut_05.wait();
-    fut_06.wait();
-    fut_07.wait();
-    fut_08.wait();
-    fut_09.wait();
-    fut_10.wait();
-    fut_11.wait();
-    fut_12.wait();
-    fut_13.wait();
-    fut_14.wait();
-    fut_15.wait();
-    fut_16.wait();
-    
-#ifdef __CUDACC__
-    // transfer memory back to host
-    GT_CUDA_CHECK(cudaMemcpy(raw_field_cpu.data(), gpu_ptr, mem_size, cudaMemcpyDeviceToHost));
-    // free cuda memory
-    cudaFree(gpu_ptr);
-#endif
-
-    /*check_field(s, b, left_rank*s*s, rank*s*s, right_rank*s*s, raw_field_cpu);
-    
-    for (int r=0; r<context.size(); ++r)
-    {
-        comm.barrier();
-        if (comm.rank() == r)
-            print_field(s, b, raw_field_cpu);
-    }
-    comm.barrier();*/
+    WAIT(req_01)
+    WAIT(req_02)
+    WAIT(req_03)
+    WAIT(req_04)
+    WAIT(req_05)
+    WAIT(req_06)
+    WAIT(req_07)
+    WAIT(req_08)
+    WAIT(req_09)
+    WAIT(req_10)
+    WAIT(req_11)
+    WAIT(req_12)
+    WAIT(req_13)
+    WAIT(req_14)
+    WAIT(req_15)
+    WAIT(req_16)
 }
