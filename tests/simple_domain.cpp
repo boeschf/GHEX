@@ -38,15 +38,10 @@ __global__ void print_kernel() {
 #ifndef GHEX_TEST_USE_UCX
 using transport = gridtools::ghex::tl::mpi_tag;
 using threading = gridtools::ghex::threads::std_thread::primitives;
-//using threading = gridtools::ghex::threads::atomic::primitives;
 #else
 using transport = gridtools::ghex::tl::ucx_tag;
 using threading = gridtools::ghex::threads::std_thread::primitives;
-//using threading = gridtools::ghex::threads::atomic::primitives;
 #endif
-//using context_type = gridtools::ghex::tl::context<transport, threading>;
-
-
 
 // domain setup:
 // - 2-dimensional
@@ -69,13 +64,55 @@ void fill_field(int s, int b, T offset, Container& field)
         for (int x=-b; x<s+b; ++x)
         {
             const std::size_t location = (std::size_t)(y+b)*(std::size_t)(s+2*b) + (std::size_t)(x+b);
-            if (y<0 || y>=b || x<0 || x>=b)
+            if (y<0 || y>=s || x<0 || x>=s)
                 field[location] = T(-1);
             else
                 field[location] = offset++;
         }
 }
 
+template<typename T, class Container>
+void check_field(int s, int b, T offset_left, T offset, T offset_right, Container& field)
+{
+    for (int y=-b; y<s+b; ++y)
+    {
+        for (int x=-b; x<0; ++x)
+        {
+            const std::size_t location = (std::size_t)(y+b)*(std::size_t)(s+2*b) + (std::size_t)(x+b);
+            const std::size_t x_left = s+x;
+            const std::size_t y_left = (y<0 ? s+y : (y>=s ? y-s : y));
+            EXPECT_EQ( field[location], y_left*s + x_left + offset_left );
+        }
+        for (int x=0; x<s; ++x)
+        {
+            const std::size_t location = (std::size_t)(y+b)*(std::size_t)(s+2*b) + (std::size_t)(x+b);
+            const std::size_t y_middle = (y<0 ? s+y : (y>=s ? y-s : y));
+            EXPECT_EQ( field[location], y_middle*s + x + offset );
+        }
+        for (int x=s; x<s+b; ++x)
+        {
+            const std::size_t location = (std::size_t)(y+b)*(std::size_t)(s+2*b) + (std::size_t)(x+b);
+            const std::size_t x_right = x-s;
+            const std::size_t y_right = (y<0 ? s+y : (y>=s ? y-s : y));
+            EXPECT_EQ( field[location], y_right*s + x_right + offset_right );
+        }
+    }
+}
+
+template<class Container>
+void print_field(int s, int b, Container& field)
+{
+    for (int y=-b; y<s+b; ++y)
+    {
+        for (int x=-b; x<s+b; ++x)
+        {
+            const std::size_t location = (std::size_t)(y+b)*(std::size_t)(s+2*b) + (std::size_t)(x+b);
+            std::cout << std::setw(3) << field[location];
+        }
+        std::cout << "\n";
+    }
+    std::cout << std::endl;
+}
 
 TEST(simple_domain, exchange)
 {
@@ -86,7 +123,6 @@ TEST(simple_domain, exchange)
     const int s = 10;
     const int b = 1;
     const int num_cells = (s+2*b)*(s+2*b);
-    const int mem_size = num_cells*sizeof(T);
     const std::array<int, 2> offset = {b,b};
     const std::array<int, 2> extent = {s+2*b, s+2*b};
     const int rank       = context.rank();
@@ -96,6 +132,7 @@ TEST(simple_domain, exchange)
     // make one field on the cpu
     std::vector<T> raw_field_cpu(num_cells);
     fill_field(s, b, rank*s*s, raw_field_cpu);
+    //print_field(s, b, raw_field_cpu);
 
     // halos
     const std::array<bool, 4> halos{b,b,b,b};
@@ -119,6 +156,7 @@ TEST(simple_domain, exchange)
     auto co = ghex::make_communication_object<pattern_type>(context.get_communicator(context.get_token()));
 
 #ifdef __CUDACC__
+    const int mem_size = num_cells*sizeof(T);
     // allocate memory on gpu
     T* gpu_ptr;
     GT_CUDA_CHECK(cudaMalloc((void**)&gpu_ptr, mem_size);
@@ -140,5 +178,7 @@ TEST(simple_domain, exchange)
     cudaFree(gpu_ptr);
 #endif
 
+    //print_field(s, b, raw_field_cpu);
+    check_field(s, b, left_rank*s*s, rank*s*s, right_rank*s*s, raw_field_cpu);
 
 }
