@@ -102,12 +102,23 @@ void check_field(int s, int b, T offset_left, T offset, T offset_right, Containe
 template<class Container>
 void print_field(int s, int b, Container& field)
 {
-    for (int y=-b; y<s+b; ++y)
+    for (int x=-b; x<s+b; ++x)
     {
-        for (int x=-b; x<s+b; ++x)
+        if (x==0 || x==s)
         {
+            for (int y=-b; y<s+b; ++y)
+            {
+                if (y==0 || y==s) 
+                    std::cout << "+";
+                std::cout << "----";
+            }
+            std::cout << "\n";
+        }
+        for (int y=-b; y<s+b; ++y)
+        {
+            if (y==0 || y==s) std::cout << "|";
             const std::size_t location = (std::size_t)(y+b)*(std::size_t)(s+2*b) + (std::size_t)(x+b);
-            std::cout << std::setw(3) << field[location];
+            std::cout << std::setw(4) << field[location];
         }
         std::cout << "\n";
     }
@@ -121,7 +132,7 @@ TEST(simple_domain, exchange)
 
     using T = double;
     const int s = 10;
-    const int b = 1;
+    const int b = 2;
     const int num_cells = (s+2*b)*(s+2*b);
     const std::array<int, 2> offset = {b,b};
     const std::array<int, 2> extent = {s+2*b, s+2*b};
@@ -135,7 +146,7 @@ TEST(simple_domain, exchange)
     //print_field(s, b, raw_field_cpu);
 
     // halos
-    const std::array<bool, 4> halos{b,b,b,b};
+    const std::array<int, 4> halos{b,b,b,b};
     // periodicity
     const std::array<bool, 2> periodicity{true,true};
     // total domain
@@ -153,7 +164,8 @@ TEST(simple_domain, exchange)
         std::vector<domain_descriptor_type>{ domain_descriptor_type{ context.rank(), l_first, l_last } });
     
     using pattern_type = decltype(pattern);
-    auto co = ghex::make_communication_object<pattern_type>(context.get_communicator(context.get_token()));
+    auto comm = context.get_communicator(context.get_token());
+    auto co = ghex::make_communication_object<pattern_type>(comm);
 
 #ifdef __CUDACC__
     const int mem_size = num_cells*sizeof(T);
@@ -178,7 +190,14 @@ TEST(simple_domain, exchange)
     cudaFree(gpu_ptr);
 #endif
 
-    //print_field(s, b, raw_field_cpu);
     check_field(s, b, left_rank*s*s, rank*s*s, right_rank*s*s, raw_field_cpu);
+    
+    for (int r=0; r<context.size(); ++r)
+    {
+        comm.barrier();
+        if (comm.rank() == r)
+            print_field(s, b, raw_field_cpu);
+    }
+    comm.barrier();
 
 }
