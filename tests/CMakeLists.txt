@@ -44,7 +44,6 @@ if (GHEX_USE_UCP)
     endforeach()
 endif()
 
-
 set(_variants serial serial_split threads async_async async_deferred)
 foreach(_var ${_variants})
     string(TOUPPER ${_var} define)
@@ -125,6 +124,44 @@ if (USE_GPU)
         )
     endforeach()
 endif()
+
+
+set(_tests_simple simple_domain)
+foreach (_t ${_tests_simple})
+    add_executable(${_t} ${_t}.cpp)
+    target_link_libraries(${_t} gtest_main_mt)
+    add_test(
+        NAME ${_t}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${MPIEXEC_PREFLAGS} ${_t} ${MPIEXEC_POSTFLAGS}
+    )
+    if (GHEX_USE_UCP)
+        add_executable(${_t}_ucx ${_t}.cpp)
+        target_compile_definitions(${_t}_ucx PUBLIC GHEX_TEST_USE_UCX)
+        target_link_libraries(${_t}_ucx gtest_main_ucx)
+        add_test(
+            NAME ${_t}_ucx
+            COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${MPIEXEC_PREFLAGS} ${_t}_ucx ${MPIEXEC_POSTFLAGS}
+        )
+    endif()
+    if (USE_GPU)
+    add_executable(${_t}_gpu ${_t}.cu)
+    target_link_libraries(${_t}_gpu gtest_main_mt)
+    add_test(
+        NAME ${_t}_gpu
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${MPIEXEC_PREFLAGS} ${_t}_gpu ${MPIEXEC_POSTFLAGS}
+    )
+    if (GHEX_USE_UCP)
+        add_executable(${_t}_gpu_ucx ${_t}.cu)
+        target_compile_definitions(${_t}_gpu_ucx PUBLIC GHEX_TEST_USE_UCX)
+        target_link_libraries(${_t}_gpu_ucx gtest_main_ucx)
+        add_test(
+            NAME ${_t}_gpu_ucx
+            COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${MPIEXEC_PREFLAGS} ${_t}_gpu_ucx ${MPIEXEC_POSTFLAGS}
+        )
+    endif()
+    endif()
+endforeach()
+
 
 add_subdirectory(transport)
 
