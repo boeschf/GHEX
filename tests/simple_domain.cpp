@@ -98,7 +98,7 @@ TEST(simple_domain, exchange)
     fill_field(s, b, rank*s*s, raw_field_cpu);
 
     // halos
-    const std::array<bool, 4> halos{1,1,1,1};
+    const std::array<bool, 4> halos{b,b,b,b};
     // periodicity
     const std::array<bool, 2> periodicity{true,true};
     // total domain
