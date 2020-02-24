@@ -40,3 +40,14 @@ if (GHEX_USE_UCP)
 
     endforeach(t_ ${_tests_ucx})
 endif()
+
+set(_tests_rma_mpi test_rma_mpi)
+
+foreach(t_ ${_tests_rma_mpi})
+    add_executable( ${t_} ./${t_}.cpp )
+    target_link_libraries(${t_} gtest_main_mt)
+    add_test(
+        NAME ${t_}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${MPIEXEC_PREFLAGS} ${t_} ${MPIEXEC_POSTFLAGS}
+    )
+endforeach(t_ ${_tests_rma_mpi})
