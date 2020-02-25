@@ -55,6 +55,39 @@ namespace gridtools {
                             fb.call_back(hook->buffer.data() + fb.offset, *fb.index_container, nullptr);
                     });
             }
+            
+            template<typename Map, typename Epoch>
+            static void bulk_pack(Map& map, Epoch& epoch)
+            {
+                for (auto& p0 : map.send_memory)
+                {
+                    for (auto& p1: p0.second)
+                    {
+                        if (p1.second.size > 0u)
+                        {
+                            for (const auto& fb : p1.second.field_infos)
+                                fb.call_back( p1.second.buffer.data() + fb.offset, *fb.index_container, nullptr);
+                            epoch.send(p1.second.bulk_send_id);
+                        }
+                    }
+                }
+            }
+            
+            template<typename Map>
+            static void bulk_unpack_only(Map& map)
+            {
+                for (auto& p0 : map.recv_memory)
+                {
+                    for (auto& p1: p0.second)
+                    {
+                        if (p1.second.size > 0u)
+                        {
+                            for (const auto& fb : p1.second.field_infos)
+                                fb.call_back( p1.second.buffer.data() + fb.offset, *fb.index_container, nullptr);
+                        }
+                    }
+                }
+            }
         };
 
         

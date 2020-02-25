@@ -343,17 +343,17 @@ TEST(rma_mpi, window_active_group) {
         comm.sync_register();
 
         for (int i=0; i<10; ++i) {
-            comm.post_bulk();
-            comm.wait_bulk();
+            comm.bulk_exchange().wait();
         }
 
-        comm.register_send(send_msg, right_rank, tag);
+        auto h = comm.register_send(send_msg, right_rank, tag);
         comm.register_recv(recv_msg, left_rank, tag);
         comm.sync_register();
 
         for (int i=0; i<10; ++i) {
-            comm.post_bulk();
-            comm.wait_bulk();
+            auto epoch = comm.bulk_exchange();
+            epoch.send(h);
+            epoch.wait();
         }
 
     };

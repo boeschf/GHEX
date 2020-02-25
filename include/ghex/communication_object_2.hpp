@@ -158,6 +158,9 @@ namespace gridtools {
                 std::size_t size;
                 std::vector<field_info_type> field_infos;
                 cuda::stream m_cuda_stream;
+#ifdef GHEX_USE_RMA 
+                typename communicator_type::bulk_send_handle bulk_send_id;
+#endif
             };
 
             /** @brief Holds maps of buffers for send and recieve operations indexed by a domain_id_pair and a device id
@@ -224,48 +227,57 @@ namespace gridtools {
             template<typename... Archs, typename... Fields>
             [[nodiscard]] handle_type exchange(buffer_info_type<Archs,Fields>... buffer_infos)
             {
-                // check that arguments are compatible
-                using test_t = pattern_container<communicator_type,grid_type,domain_id_type>;
-                static_assert(detail::test_eq_t<test_t, typename buffer_info_type<Archs,Fields>::pattern_container_type...>::value,
-                        "patterns are not compatible with this communication object");
-                if (m_valid) 
-                    throw std::runtime_error("earlier exchange operation was not finished");
-                m_valid = true;
-
-                // temporarily store address of pattern containers
-                const test_t* ptrs[sizeof...(Fields)] = { &(buffer_infos.get_pattern_container())... };
-                // build a tag map
-                std::map<const test_t*,int> pat_ptr_map;
-                int max_tag = 0;
-                for (unsigned int k=0; k<sizeof...(Fields); ++k)
-                {
-                    auto p_it_bool = pat_ptr_map.insert( std::make_pair(ptrs[k], max_tag) );
-                    if (p_it_bool.second == true)
-                        max_tag += ptrs[k]->max_tag()+1;
-                }
-                // compute tag offset for each field
-                int tag_offsets[sizeof...(Fields)] = { pat_ptr_map[&(buffer_infos.get_pattern_container())]... };
-                // store arguments and corresponding memory in tuples
-                using buffer_infos_ptr_t     = std::tuple<std::remove_reference_t<decltype(buffer_infos)>*...>;
-                using memory_t               = std::tuple<buffer_memory<Archs>*...>;
-                buffer_infos_ptr_t buffer_info_tuple{&buffer_infos...};
-                memory_t memory_tuple{&(std::get<buffer_memory<Archs>>(m_mem))...};
-                // loop over buffer_infos/memory and compute required space
-                int i = 0;
-                detail::for_each(memory_tuple, buffer_info_tuple, [this,&i,&tag_offsets](auto mem, auto bi) 
-                {
-                    using arch_type = typename std::remove_reference_t<decltype(*mem)>::arch_type;
-                    using value_type  = typename std::remove_reference_t<decltype(*bi)>::value_type;
-                    auto field_ptr = &(bi->get_field());
-                    const domain_id_type my_dom_id = bi->get_field().domain_id();
-                    allocate<arch_type,value_type>(mem, bi->get_pattern(), field_ptr, my_dom_id, bi->device_id(), tag_offsets[i]);
-                    ++i;
-                });
+                prepare_exchange(buffer_infos...);
                 handle_type h(m_comm, [this](){this->wait();});
                 post_recvs();
                 pack();
                 return h; 
             }
+           
+#ifdef GHEX_USE_RMA 
+            template<typename... Archs, typename... Fields>
+            void setup_bulk_exchange(buffer_info_type<Archs,Fields>... buffer_infos)
+            {
+                prepare_exchange(buffer_infos...);
+                detail::for_each(m_mem, [this](auto& m)
+                {
+                    for (auto& p0 : m.recv_memory)
+                        for (auto& p1: p0.second)
+                            if (p1.second.size > 0u)
+                            {
+                                p1.second.buffer.resize(p1.second.size);
+                                m_comm.register_recv(p1.second.buffer, p1.second.address, p1.second.tag);
+                            }
+                    for (auto& p0 : m.send_memory)
+                        for (auto& p1: p0.second)
+                            if (p1.second.size > 0u)
+                            {
+                                p1.second.buffer.resize(p1.second.size);
+                                p1.second.bulk_send_id =
+                                m_comm.register_send(p1.second.buffer, p1.second.address, p1.second.tag);
+                            }
+                });
+                m_comm.sync_register();
+            }
+
+            void bulk_exchange()
+            {
+                auto epoch = m_comm.bulk_exchange();
+                detail::for_each(m_mem, [this,&epoch](auto& m)
+                {
+                    using arch_type = typename std::remove_reference_t<decltype(m)>::arch_type;
+                    packer<arch_type>::bulk_pack(m,epoch);
+                });
+                //return m_comm.post_bulk();
+                epoch.wait();
+                detail::for_each(m_mem, [this,&epoch](auto& m)
+                {
+                    using arch_type = typename std::remove_reference_t<decltype(m)>::arch_type;
+                    packer<arch_type>::bulk_unpack(m);
+                });
+
+            }
+#endif
 
         public: // exchange a number of buffer_infos with identical type (same field, device and pattern type)
 
@@ -316,8 +328,50 @@ namespace gridtools {
 
         private: // implementation
 
+            template<typename... Archs, typename... Fields>
+            void prepare_exchange(buffer_info_type<Archs,Fields>... buffer_infos)
+            {
+                // check that arguments are compatible
+                using test_t = pattern_container<communicator_type,grid_type,domain_id_type>;
+                static_assert(detail::test_eq_t<test_t, typename buffer_info_type<Archs,Fields>::pattern_container_type...>::value,
+                        "patterns are not compatible with this communication object");
+                if (m_valid) 
+                    throw std::runtime_error("earlier exchange operation was not finished");
+                m_valid = true;
+
+                // temporarily store address of pattern containers
+                const test_t* ptrs[sizeof...(Fields)] = { &(buffer_infos.get_pattern_container())... };
+                // build a tag map
+                std::map<const test_t*,int> pat_ptr_map;
+                int max_tag = 0;
+                for (unsigned int k=0; k<sizeof...(Fields); ++k)
+                {
+                    auto p_it_bool = pat_ptr_map.insert( std::make_pair(ptrs[k], max_tag) );
+                    if (p_it_bool.second == true)
+                        max_tag += ptrs[k]->max_tag()+1;
+                }
+                // compute tag offset for each field
+                int tag_offsets[sizeof...(Fields)] = { pat_ptr_map[&(buffer_infos.get_pattern_container())]... };
+                // store arguments and corresponding memory in tuples
+                using buffer_infos_ptr_t     = std::tuple<std::remove_reference_t<decltype(buffer_infos)>*...>;
+                using memory_t               = std::tuple<buffer_memory<Archs>*...>;
+                buffer_infos_ptr_t buffer_info_tuple{&buffer_infos...};
+                memory_t memory_tuple{&(std::get<buffer_memory<Archs>>(m_mem))...};
+                // loop over buffer_infos/memory and compute required space
+                int i = 0;
+                detail::for_each(memory_tuple, buffer_info_tuple, [this,&i,&tag_offsets](auto mem, auto bi) 
+                {
+                    using arch_type = typename std::remove_reference_t<decltype(*mem)>::arch_type;
+                    using value_type  = typename std::remove_reference_t<decltype(*bi)>::value_type;
+                    auto field_ptr = &(bi->get_field());
+                    const domain_id_type my_dom_id = bi->get_field().domain_id();
+                    allocate<arch_type,value_type>(mem, bi->get_pattern(), field_ptr, my_dom_id, bi->device_id(), tag_offsets[i]);
+                    ++i;
+                });
+            }
+
             template<typename Arch, typename Field>
-            [[nodiscard]] handle_type exchange_impl(buffer_info_type<Arch,Field>* first, std::size_t length)
+            void prepare_exchange_impl(buffer_info_type<Arch,Field>* first, std::size_t length)
             {
                 // check that arguments are compatible
                 using test_t = pattern_container<communicator_type,grid_type,domain_id_type>;
@@ -348,6 +402,12 @@ namespace gridtools {
                     const auto my_dom_id  =(first+k)->get_field().domain_id();
                     allocate<Arch,value_type>(mem, (first+k)->get_pattern(), field_ptr, my_dom_id, (first+k)->device_id(), tag_offset);
                 }
+            }
+
+            template<typename Arch, typename Field>
+            [[nodiscard]] handle_type exchange_impl(buffer_info_type<Arch,Field>* first, std::size_t length)
+            {
+                prepare_exchange_impl(first,length);
                 return handle_type(m_comm, [this](){this->wait();});
             }
 
@@ -512,6 +572,9 @@ namespace gridtools {
                                 0,
                                 std::vector<typename BufferType::field_info_type>(),
                                 cuda::stream()
+#ifdef GHEX_USE_RMA 
+                                , {}
+#endif
                             })).first;
                     }
                     else if (it->second.size==0)
