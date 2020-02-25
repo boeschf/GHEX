@@ -22,7 +22,7 @@ using transport = gridtools::ghex::tl::mpi_tag;
 using threading_std = gridtools::ghex::threads::std_thread::primitives;
 using threading_atc = gridtools::ghex::threads::atomic::primitives;
 using threading_non = gridtools::ghex::threads::none::primitives;
-using threading = threading_non;
+using threading = threading_atc;
 
 const std::size_t size = 10*1024;
 
@@ -318,147 +318,186 @@ const std::size_t size = 10*1024;
 
 
 TEST(rma_mpi, window_active_group) {
-    auto context_ptr = gridtools::ghex::tl::context_factory<transport,threading>::create(1, MPI_COMM_WORLD);
+    
+    const int num_threads = 3;
+    auto context_ptr = gridtools::ghex::tl::context_factory<transport,threading>::create(num_threads, MPI_COMM_WORLD);
     auto& context = *context_ptr;
 
-    MPI_Info info;
-    GHEX_CHECK_MPI_RESULT(
-        MPI_Info_create(&info)
-    )
-    GHEX_CHECK_MPI_RESULT(
-        MPI_Info_set(info, "no_locks", "true")
-    )
-    MPI_Win win;
 
-    void* memory;
-    using T = double;
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    auto func = [&context]() {
+        auto token = context.get_token();
+        auto comm  = context.get_communicator(token);
 
-    GHEX_CHECK_MPI_RESULT(
-        //MPI_Win_allocate(size*sizeof(T)+sizeof(unsigned int), 1, MPI_INFO_NULL, MPI_COMM_WORLD, &memory, &win)
-        MPI_Win_create_dynamic(info, MPI_COMM_WORLD, &win)
-    )
+        const auto rank = comm.rank();
+        const auto size = comm.size();
+        const auto left_rank = ((rank+size)-1) % size;
+        const auto right_rank = ((rank+size)-1) % size;
+        const auto tag = token.id();
 
-    MPI_Group group;
-    GHEX_CHECK_MPI_RESULT(
-        MPI_Win_get_group(win, &group)
-    )
+        const auto buffer_size = 512;
+        auto send_msg = comm.make_message<>(buffer_size);
+        auto recv_msg = comm.make_message<>(buffer_size);
 
-    GHEX_CHECK_MPI_RESULT(
-        MPI_Win_fence(0, win)
-    )
+        comm.register_send(send_msg, right_rank, tag);
+        comm.register_recv(recv_msg, left_rank, tag);
+        comm.sync_register();
 
-    if (rank == 0)
-    {
-        memory = new char[size*sizeof(T)+sizeof(unsigned int)];
-        MPI_Aint memory_address;
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Recv(&memory_address, sizeof(MPI_Aint), MPI_BYTE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE)
-        )
-        MPI_Group access_group;
-        int access_ranks[2] = {1,2};
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Group_incl(group, 2, access_ranks, &access_group)
-        )
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Win_start(access_group, 0, win)
-            //MPI_Win_start(access_group, MPI_MODE_NOCHECK, win)
-        )
-        *(reinterpret_cast<unsigned int*>((T*)memory+size)) = 99;
-        *((T*)memory) = 77;
-        *((T*)memory + size/2) = 88;
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Put(
-                memory, 
-                size*sizeof(T)+sizeof(unsigned int),
-                MPI_BYTE, 
-                1,
-                memory_address,
-                size*sizeof(T)+sizeof(unsigned int),
-                MPI_BYTE, 
-                win)
-        )
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Win_complete(win)
-        )
-    }
-    else if (rank == 1)
-    {
-        //memory = new char[size*sizeof(T)+sizeof(unsigned int)];
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Alloc_mem(size*sizeof(T)+sizeof(unsigned int),  MPI_INFO_NULL, &memory)
-        )
-        *((double*)memory) = 100; 
-        std::cout << *((double*)memory) << std::endl;
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Win_attach(win, memory, size*sizeof(T)+sizeof(unsigned int))
-        )
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Win_sync(win)
-        )
-        MPI_Aint memory_address;
-        void* win_ptr;
-        MPI_Aint win_address;
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Get_address(memory, &memory_address)
-        )
-        int flag;
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Win_get_attr(win, MPI_WIN_BASE, &win_ptr, &flag)
-        )
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Get_address(win_ptr, &win_address)
-        )
-        std::cout << "memory address: " << memory_address << std::endl;
-        std::cout << "window address: " << win_address << std::endl;
-        memory_address = memory_address - win_address;
-        memory_address = reinterpret_cast<char*>(memory) - reinterpret_cast<char*>(MPI_BOTTOM);
-        std::cout << "memory address: " << memory_address << std::endl;
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Send(&memory_address, sizeof(MPI_Aint), MPI_BYTE, 0, 0, MPI_COMM_WORLD)
-        )
-        MPI_Group exposure_group;
-        int exposure_ranks[1] = {0};
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Group_incl(group, 1, exposure_ranks, &exposure_group)
-        )
-        MPI_Group access_group;
-        int access_ranks[1] = {2};
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Group_incl(group, 1, access_ranks, &access_group)
-        )
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Win_start(access_group, 0, win)
-        )
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Win_post(exposure_group, 0, win)
-        )
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Win_wait(win)
-        )
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Win_complete(win)
-        )
-    }
-    else if (rank == 2)
-    {
-        MPI_Group exposure_group;
-        int exposure_ranks[2] = {0,1};
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Group_incl(group, 2, exposure_ranks, &exposure_group)
-        )
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Win_post(exposure_group, 0, win)
-        )
-        GHEX_CHECK_MPI_RESULT(
-            MPI_Win_wait(win)
-        )
-    }
+        for (int i=0; i<10; ++i) {
+            comm.start_bulk();
+            comm.stop_bulk();
+        }
 
-    GHEX_CHECK_MPI_RESULT(
-        MPI_Win_free(&win)
-    )
+    };
+
+
+    std::vector<std::thread> threads;
+    threads.reserve(num_threads);
+    for (int i=0; i<num_threads; ++i)
+        threads.push_back(std::thread{func});
+
+    for (auto& t : threads)
+        t.join();
+
+    
+
+    //MPI_Info info;
+    //GHEX_CHECK_MPI_RESULT(
+    //    MPI_Info_create(&info)
+    //)
+    //GHEX_CHECK_MPI_RESULT(
+    //    MPI_Info_set(info, "no_locks", "true")
+    //)
+    //MPI_Win win;
+
+    //void* memory;
+    //using T = double;
+    //int rank;
+    //MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    //GHEX_CHECK_MPI_RESULT(
+    //    //MPI_Win_allocate(size*sizeof(T)+sizeof(unsigned int), 1, MPI_INFO_NULL, MPI_COMM_WORLD, &memory, &win)
+    //    MPI_Win_create_dynamic(info, MPI_COMM_WORLD, &win)
+    //)
+
+    //MPI_Group group;
+    //GHEX_CHECK_MPI_RESULT(
+    //    MPI_Win_get_group(win, &group)
+    //)
+
+    //GHEX_CHECK_MPI_RESULT(
+    //    MPI_Win_fence(0, win)
+    //)
+
+    //if (rank == 0)
+    //{
+    //    memory = new char[size*sizeof(T)+sizeof(unsigned int)];
+    //    MPI_Aint memory_address;
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Recv(&memory_address, sizeof(MPI_Aint), MPI_BYTE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE)
+    //    )
+    //    MPI_Group access_group;
+    //    int access_ranks[2] = {1,2};
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Group_incl(group, 2, access_ranks, &access_group)
+    //    )
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Win_start(access_group, 0, win)
+    //        //MPI_Win_start(access_group, MPI_MODE_NOCHECK, win)
+    //    )
+    //    *(reinterpret_cast<unsigned int*>((T*)memory+size)) = 99;
+    //    *((T*)memory) = 77;
+    //    *((T*)memory + size/2) = 88;
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Put(
+    //            memory, 
+    //            size*sizeof(T)+sizeof(unsigned int),
+    //            MPI_BYTE, 
+    //            1,
+    //            memory_address,
+    //            size*sizeof(T)+sizeof(unsigned int),
+    //            MPI_BYTE, 
+    //            win)
+    //    )
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Win_complete(win)
+    //    )
+    //}
+    //else if (rank == 1)
+    //{
+    //    //memory = new char[size*sizeof(T)+sizeof(unsigned int)];
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Alloc_mem(size*sizeof(T)+sizeof(unsigned int),  MPI_INFO_NULL, &memory)
+    //    )
+    //    *((double*)memory) = 100; 
+    //    std::cout << *((double*)memory) << std::endl;
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Win_attach(win, memory, size*sizeof(T)+sizeof(unsigned int))
+    //    )
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Win_sync(win)
+    //    )
+    //    MPI_Aint memory_address;
+    //    void* win_ptr;
+    //    MPI_Aint win_address;
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Get_address(memory, &memory_address)
+    //    )
+    //    int flag;
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Win_get_attr(win, MPI_WIN_BASE, &win_ptr, &flag)
+    //    )
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Get_address(win_ptr, &win_address)
+    //    )
+    //    std::cout << "memory address: " << memory_address << std::endl;
+    //    std::cout << "window address: " << win_address << std::endl;
+    //    memory_address = memory_address - win_address;
+    //    memory_address = reinterpret_cast<char*>(memory) - reinterpret_cast<char*>(MPI_BOTTOM);
+    //    std::cout << "memory address: " << memory_address << std::endl;
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Send(&memory_address, sizeof(MPI_Aint), MPI_BYTE, 0, 0, MPI_COMM_WORLD)
+    //    )
+    //    MPI_Group exposure_group;
+    //    int exposure_ranks[1] = {0};
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Group_incl(group, 1, exposure_ranks, &exposure_group)
+    //    )
+    //    MPI_Group access_group;
+    //    int access_ranks[1] = {2};
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Group_incl(group, 1, access_ranks, &access_group)
+    //    )
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Win_start(access_group, 0, win)
+    //    )
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Win_post(exposure_group, 0, win)
+    //    )
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Win_wait(win)
+    //    )
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Win_complete(win)
+    //    )
+    //}
+    //else if (rank == 2)
+    //{
+    //    MPI_Group exposure_group;
+    //    int exposure_ranks[2] = {0,1};
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Group_incl(group, 2, exposure_ranks, &exposure_group)
+    //    )
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Win_post(exposure_group, 0, win)
+    //    )
+    //    GHEX_CHECK_MPI_RESULT(
+    //        MPI_Win_wait(win)
+    //    )
+    //}
+
+    //GHEX_CHECK_MPI_RESULT(
+    //    MPI_Win_free(&win)
+    //)
 
 }
 

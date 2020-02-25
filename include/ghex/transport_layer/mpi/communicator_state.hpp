@@ -11,6 +11,8 @@
 #ifndef INCLUDED_GHEX_TL_MPI_COMMUNICATOR_STATE_HPP
 #define INCLUDED_GHEX_TL_MPI_COMMUNICATOR_STATE_HPP
 
+#include <vector>
+#include <atomic>
 #include "./error.hpp"
 #include "./future.hpp"
 #include "../callback_utils.hpp"
@@ -37,6 +39,14 @@ namespace gridtools {
                     thread_primitives_type* m_thread_primitives;
                     rank_type m_rank;
                     rank_type m_size;
+                    MPI_Win m_win;
+                    MPI_Group m_group;
+                    MPI_Group m_access_group;
+                    MPI_Group m_exposure_group;
+                    std::vector<rank_type> m_access_ranks;
+                    std::vector<rank_type> m_exposure_ranks;
+                    volatile bool m_epoch = false;
+                    //std::atomic<int> m_counter;
 
                     shared_communicator_state(MPI_Comm comm, transport_context_type* tc, thread_primitives_type* tp)
                     : m_comm{comm}
@@ -44,7 +54,27 @@ namespace gridtools {
                     , m_thread_primitives{tp}
                     , m_rank{ [](MPI_Comm c){ int r; GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(c,&r)); return r; }(comm) }
                     , m_size{ [](MPI_Comm c){ int s; GHEX_CHECK_MPI_RESULT(MPI_Comm_size(c,&s)); return s; }(comm) }
-                    {}
+                    //, m_counter{0}
+                    {
+                        GHEX_CHECK_MPI_RESULT(MPI_Win_create_dynamic(MPI_INFO_NULL, m_comm, &m_win));
+                        GHEX_CHECK_MPI_RESULT(MPI_Win_get_group(m_win, &m_group));
+                        GHEX_CHECK_MPI_RESULT(MPI_Win_get_group(m_win, &m_access_group));
+                        GHEX_CHECK_MPI_RESULT(MPI_Win_get_group(m_win, &m_exposure_group));
+                        /*m_access_ranks.push_back(m_rank);
+                        m_exposure_ranks.push_back(m_rank);
+                        GHEX_CHECK_MPI_RESULT(MPI_Group_incl(m_group, m_access_ranks.size(), m_access_ranks.data(), &(m_access_group)));
+                        GHEX_CHECK_MPI_RESULT(MPI_Group_incl(m_group, m_exposure_ranks.size(), m_exposure_ranks.data(), &(m_exposure_group)));
+                        m_access_ranks.clear();
+                        m_exposure_ranks.clear();*/
+                    }
+
+                    ~shared_communicator_state()
+                    {
+                        MPI_Win_free(&m_win);
+                        MPI_Group_free(&m_group);
+                        MPI_Group_free(&m_access_group);
+                        MPI_Group_free(&m_exposure_group);
+                    }
 
                     rank_type rank() const noexcept { return m_rank; }
                     rank_type size() const noexcept { return m_size; }

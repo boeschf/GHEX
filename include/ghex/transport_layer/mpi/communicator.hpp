@@ -107,6 +107,91 @@ namespace gridtools {
                         return req;
                     }
 
+                    template<typename Message>
+                    void register_send(const Message& msg, rank_type dst, tag_type tag) {
+                        m_shared_state->m_thread_primitives->critical(
+                            [this, dst]() { m_shared_state->m_access_ranks.push_back(dst); });
+                    }
+
+                    template<typename Message>
+                    void register_recv(Message& msg, rank_type src, tag_type tag) {
+                        using value_type = typename Message::value_type;
+                        GHEX_CHECK_MPI_RESULT(MPI_Win_attach(m_shared_state->m_win, msg.data(), msg.size()*sizeof(value_type)));
+                        m_shared_state->m_thread_primitives->critical(
+                            [this, src]() { m_shared_state->m_exposure_ranks.push_back(src); });
+                    }
+
+                    void sync_register() {
+                        auto& token = *(m_state->m_token_ptr);
+                        auto& tp = *(m_shared_state->m_thread_primitives);
+                        auto& st = *m_shared_state;
+                        tp.barrier(token);
+                        tp.single(token, [this,&st]() {
+                            if (st.m_access_ranks.size())
+                            {
+                                //MPI_Group_free(&(st.m_access_group));
+                                //GHEX_CHECK_MPI_RESULT(
+                                //    MPI_Group_incl(st.m_group, st.m_access_ranks.size(), st.m_access_ranks.data(), &(st.m_access_group)));
+                                st.m_access_ranks.clear();
+                            }
+                            if (st.m_exposure_ranks.size())
+                            {
+                                //MPI_Group_free(&(st.m_exposure_group));
+                                //GHEX_CHECK_MPI_RESULT(
+                                //    MPI_Group_incl(st.m_group, st.m_exposure_ranks.size(), st.m_exposure_ranks.data(), &(st.m_exposure_group)));
+                                st.m_exposure_ranks.clear();
+                            }
+                        }); 
+                        tp.barrier(token);
+                    }
+
+                    void start_bulk() {
+                        auto& token = *(m_state->m_token_ptr);
+                        auto& tp = *(m_shared_state->m_thread_primitives);
+                        auto& st = *m_shared_state;
+                        /*tp.single(token, [this,&st]() {   
+                            MPI_Win_post(st.m_exposure_group, 0, st.m_win);
+                            MPI_Win_start(st.m_access_group, 0, st.m_win);
+                            //while ( st.m_counter.load() > 0 ) {}
+                            while ( st.m_epoch ) {}
+                            st.m_counter = st.m_thread_primitives->size();
+                            st.m_epoch = true; } );
+                        while (!st.m_epoch) {}*/
+
+                        //if (++st.m_counter == 1)
+                        //tp.master(token, [this,&st]()
+                        tp.master(token, [this,&st]()
+                        //if (token.id() == 0)
+                        {
+                            MPI_Win_post(st.m_exposure_group, 0, st.m_win);
+                            MPI_Win_start(st.m_access_group, 0, st.m_win);
+                            st.m_epoch = true;
+                        });
+                        //tp.barrier(token);
+                        while (!st.m_epoch) {}
+                    }
+
+                    void stop_bulk() {
+                        auto& token = *(m_state->m_token_ptr);
+                        auto& tp = *(m_shared_state->m_thread_primitives);
+                        auto& st = *m_shared_state;
+                        //if (--st.m_counter == 0)
+                        tp.barrier(token);
+                        st.m_epoch = false;
+                        tp.barrier(token);
+                        tp.master(token, [this,&st]()
+                        //if (token.id() == 0)
+                        {
+                            MPI_Win_complete(st.m_win);
+
+                            MPI_Win_wait(st.m_win);
+                          //  st.m_epoch = false;
+
+                        });
+                        //tp.barrier(token);
+                    }
+
+
                     /** @brief Function to poll the transport layer and check for completion of operations with an
                       * associated callback. When an operation completes, the corresponfing call-back is invoked
                       * with the message, rank and tag associated with this communication.
