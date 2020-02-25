@@ -331,20 +331,29 @@ TEST(rma_mpi, window_active_group) {
         const auto rank = comm.rank();
         const auto size = comm.size();
         const auto left_rank = ((rank+size)-1) % size;
-        const auto right_rank = ((rank+size)-1) % size;
+        const auto right_rank = (rank+1) % size;
         const auto tag = token.id();
 
-        const auto buffer_size = 512;
+        const auto buffer_size = 1;
         auto send_msg = comm.make_message<>(buffer_size);
         auto recv_msg = comm.make_message<>(buffer_size);
+
+        //comm.register_send(send_msg, right_rank, tag);
+        //comm.register_recv(recv_msg, left_rank, tag);
+        comm.sync_register();
+
+        for (int i=0; i<10; ++i) {
+            comm.post_bulk();
+            comm.wait_bulk();
+        }
 
         comm.register_send(send_msg, right_rank, tag);
         comm.register_recv(recv_msg, left_rank, tag);
         comm.sync_register();
 
         for (int i=0; i<10; ++i) {
-            comm.start_bulk();
-            comm.stop_bulk();
+            comm.post_bulk();
+            comm.wait_bulk();
         }
 
     };
