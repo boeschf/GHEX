@@ -74,7 +74,7 @@ namespace gridtools {
             }
             
             template<typename Map>
-            static void bulk_unpack_only(Map& map)
+            static void bulk_unpack(Map& map)
             {
                 for (auto& p0 : map.recv_memory)
                 {
