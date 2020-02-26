@@ -764,7 +764,8 @@ TEST(communication_object_2, exchange)
     bco.exchange();
     }
         
-#endif
+//#endif
+#else
 
     co.bexchange(
         pattern1(field_1a),
@@ -774,6 +775,7 @@ TEST(communication_object_2, exchange)
         pattern1(field_3a),
         pattern1(field_3b)
     );
+#endif
 #endif
 #ifdef GHEX_TEST_SERIAL_VECTOR
     auto co = gridtools::ghex::make_communication_object<pattern_type>(context.get_communicator(context.get_token()));
