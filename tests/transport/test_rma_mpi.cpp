@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include <ghex/transport_layer/mpi/context.hpp>
+#include <ghex/transport_layer/mpi/bulk_exchange.hpp>
 using transport = gridtools::ghex::tl::mpi_tag;
 
 using threading_std = gridtools::ghex::threads::std_thread::primitives;
@@ -338,22 +339,25 @@ TEST(rma_mpi, window_active_group) {
         auto send_msg = comm.make_message<>(buffer_size);
         auto recv_msg = comm.make_message<>(buffer_size);
 
+        auto bulk_ex = gridtools::ghex::tl::mpi::bulk_exchange<threading>(comm);
         //comm.register_send(send_msg, right_rank, tag);
         //comm.register_recv(recv_msg, left_rank, tag);
-        comm.sync_register();
+        bulk_ex.sync();
 
         for (int i=0; i<10; ++i) {
-            comm.bulk_exchange().wait();
+            bulk_ex.start_epoch();
+            bulk_ex.send();
+            bulk_ex.end_epoch();
         }
 
-        auto h = comm.register_send(send_msg, right_rank, tag);
-        comm.register_recv(recv_msg, left_rank, tag);
-        comm.sync_register();
+        auto h = bulk_ex.register_send(send_msg, right_rank, tag);
+        bulk_ex.register_recv(recv_msg, left_rank, tag);
+        bulk_ex.sync();
 
         for (int i=0; i<10; ++i) {
-            auto epoch = comm.bulk_exchange();
-            epoch.send(h);
-            epoch.wait();
+            bulk_ex.start_epoch();
+            bulk_ex.send(h);
+            bulk_ex.end_epoch();
         }
 
     };

@@ -95,6 +95,9 @@ namespace gridtools {
         private: // friend class
 
             friend class communication_handle<Communicator,GridType,DomainIdType>;
+        
+            template<typename, typename, typename>
+            friend class bulk_communication_object;
 
         public: // member types
 
@@ -158,6 +161,7 @@ namespace gridtools {
                 std::size_t size;
                 std::vector<field_info_type> field_infos;
                 cuda::stream m_cuda_stream;
+                std::size_t bulk_send_id;
 #ifdef GHEX_USE_RMA 
                 typename communicator_type::bulk_send_handle bulk_send_id;
 #endif
@@ -571,7 +575,8 @@ namespace gridtools {
                                 arch_traits<Arch>::make_message(pool, device_id),
                                 0,
                                 std::vector<typename BufferType::field_info_type>(),
-                                cuda::stream()
+                                cuda::stream(),
+                                0u
 #ifdef GHEX_USE_RMA 
                                 , {}
 #endif

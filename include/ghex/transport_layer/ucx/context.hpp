@@ -33,6 +33,7 @@ namespace gridtools {
                 using rank_type         = ucx::endpoint_t::rank_type;
                 using worker_type       = ucx::worker_t<ThreadPrimitives>;
                 using communicator_type = communicator<ucx::communicator<ThreadPrimitives>>;
+                using bulk_exchange_type = communicator_type;
 
             private: // member types
 

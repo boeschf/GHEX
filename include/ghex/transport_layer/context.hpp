@@ -51,6 +51,7 @@ namespace gridtools {
                 using tag                    = TransportTag;
                 using transport_context_type = transport_context<tag,ThreadPrimitives>;
                 using communicator_type      = typename transport_context_type::communicator_type;
+                using bulk_exchange_type     = typename transport_context_type::bulk_exchange_type;
                 using thread_primitives_type = ThreadPrimitives;
                 using thread_token           = typename thread_primitives_type::token;
 

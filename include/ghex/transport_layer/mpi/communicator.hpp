@@ -31,6 +31,9 @@ namespace gridtools {
 
             namespace mpi {
 
+                template<typename ThreadPrimitives>
+                class bulk_exchange;
+
                 /** @brief A communicator for MPI point-to-point communication.
                   * This class is lightweight and copying/moving instances is safe and cheap.
                   * Communicators can be created through the context, and are thread-compatible.
@@ -53,6 +56,8 @@ namespace gridtools {
                     using request_cb_type = request_cb<ThreadPrimitives>;
                     using message_type    = typename request_cb_type::message_type;
                     using progress_status = typename state_type::progress_status;
+
+                    friend class bulk_exchange<ThreadPrimitives>;
 
                   private: // members
                     shared_state_type* m_shared_state;
@@ -106,201 +111,6 @@ namespace gridtools {
                         req.m_kind = request_kind::recv;
                         return req;
                     }
-
-                    struct bulk_send_handle {
-                        std::size_t m_index; 
-                        bulk_send_handle() noexcept = default;
-                        bulk_send_handle(std::size_t i) noexcept : m_index{i} {}
-                    };
-
-                    template<typename Message>
-                    bulk_send_handle register_send(const Message& msg, rank_type dst, tag_type tag) {
-                        if (m_state->m_sync_count != m_state->m_sync_send) {
-                            m_state->m_put_sends.clear();
-                            m_state->m_sync_send = m_state->m_sync_count;
-                        }
-
-                        using value_type = typename Message::value_type;
-                        m_shared_state->m_thread_primitives->critical(
-                            [this, dst]() { m_shared_state->m_access_ranks.insert(dst); });
-                        
-                        m_state->m_put_sends.emplace_back( msg.data(), msg.size()*sizeof(value_type), dst );
-                        auto& item = m_state->m_put_sends.back();
-                        request req;
-                        GHEX_CHECK_MPI_RESULT(MPI_Irecv(item.m_recv_address.get(), 1, MPI_AINT,
-                                                        dst, tag, m_shared_state->m_comm, &req.get()));
-                        req.m_kind = request_kind::recv;
-                        item.m_future = std::move(req);
-                        return { m_state->m_put_sends.size() - 1u };
-                    }
-
-                    template<typename Message>
-                    void register_recv(Message& msg, rank_type src, tag_type tag) {
-                        if (m_state->m_sync_count != m_state->m_sync_recv) {
-                            for (auto& item : m_state->m_put_recvs)
-                                GHEX_CHECK_MPI_RESULT(MPI_Win_detach(m_shared_state->m_win, item.m_buffer));
-                            m_state->m_put_recvs.clear();
-                            m_state->m_sync_recv = m_state->m_sync_count;
-                        }
-
-                        using value_type = typename Message::value_type;
-                        GHEX_CHECK_MPI_RESULT(MPI_Win_attach(m_shared_state->m_win, msg.data(), msg.size()*sizeof(value_type)));
-                        m_shared_state->m_thread_primitives->critical(
-                            [this, src]() { m_shared_state->m_exposure_ranks.insert(src); });
-
-                        m_state->m_put_recvs.emplace_back(msg.data());
-                        auto& item = m_state->m_put_recvs.back();
-                        GHEX_CHECK_MPI_RESULT(MPI_Get_address(msg.data(), item.m_recv_address.get()));
-                        request req;
-                        GHEX_CHECK_MPI_RESULT(MPI_Isend(item.m_recv_address.get(), 1, MPI_AINT,
-                                                        src, tag, m_shared_state->m_comm, &req.get()));
-                        req.m_kind = request_kind::send;
-                        item.m_future = std::move(req);
-                    }
-
-                    void sync_register() {
-                        for (auto& item : m_state->m_put_sends)
-                            item.m_future.wait();
-                        for (auto& item : m_state->m_put_recvs)
-                            item.m_future.wait();
-                        ++m_state->m_sync_count;
-                        auto& token = *(m_state->m_token_ptr);
-                        auto& tp = *(m_shared_state->m_thread_primitives);
-                        auto& st = *m_shared_state;
-                        //tp.barrier(token);
-                        barrier();
-                        tp.single(token, [this,&st]() {
-                            if (st.m_access_ranks.size())
-                            {
-                                //std::cout << rank() << " access ranks: ";
-                                //for (auto r : st.m_access_ranks) std::cout << r << " ";
-                                //std::cout << std::endl;
-                                MPI_Group_free(&(st.m_access_group));
-                                std::vector<rank_type> access_ranks(st.m_access_ranks.begin(), st.m_access_ranks.end());
-                                GHEX_CHECK_MPI_RESULT(
-                                    MPI_Group_incl(st.m_group, access_ranks.size(), access_ranks.data(), &(st.m_access_group)));
-                                st.m_access_ranks.clear();
-                            }
-                            if (st.m_exposure_ranks.size())
-                            {
-                                //std::cout << rank() << " exposure ranks: ";
-                                //for (auto r : st.m_exposure_ranks) std::cout << r << " ";
-                                //std::cout << std::endl;
-                                MPI_Group_free(&(st.m_exposure_group));
-                                std::vector<rank_type> exposure_ranks(st.m_exposure_ranks.begin(), st.m_exposure_ranks.end());
-                                GHEX_CHECK_MPI_RESULT(
-                                    MPI_Group_incl(st.m_group, exposure_ranks.size(), exposure_ranks.data(), &(st.m_exposure_group)));
-                                st.m_exposure_ranks.clear();
-                            }
-                        }); 
-                        //tp.barrier(token);
-                        barrier();
-                    }
-
-                    struct bulk_epoch
-                    {
-                        thread_token m_token;
-                        shared_state_type* m_shared_state;
-                        state_type* m_state;
-
-                        void send(bulk_send_handle h) {
-                            while (!m_shared_state->m_epoch) {}
-                            auto& item = m_state->m_put_sends[h.m_index];
-                            GHEX_CHECK_MPI_RESULT(
-                                MPI_Put(item.m_buffer, item.m_size, MPI_BYTE, item.m_rank,
-                                        *(item.m_recv_address), item.m_size, MPI_BYTE, m_shared_state->m_win));
-                        }
-
-                        void send() {
-                            while (!m_shared_state->m_epoch) {}
-                            for (auto& item : m_state->m_put_sends)
-                                GHEX_CHECK_MPI_RESULT(
-                                    MPI_Put(item.m_buffer, item.m_size, MPI_BYTE, item.m_rank,
-                                            *(item.m_recv_address), item.m_size, MPI_BYTE, m_shared_state->m_win));
-                        }
-
-                        void wait() {
-                            auto& tp = *(m_shared_state->m_thread_primitives);
-                            tp.barrier(m_token);
-                            tp.single(m_token, [this]()
-                            {
-                                MPI_Win_complete(m_shared_state->m_win);
-                                MPI_Win_wait(m_shared_state->m_win);
-                                m_shared_state->m_epoch = false;
-                            });
-                            tp.barrier(m_token);
-                        }
-                    };
-                    
-                    bulk_epoch bulk_exchange() {
-                        auto& token = *(m_state->m_token_ptr);
-                        auto& tp = *(m_shared_state->m_thread_primitives);
-
-                        tp.single(token, [this]() {
-                            MPI_Win_post(m_shared_state->m_exposure_group, 0, m_shared_state->m_win);
-                            MPI_Win_start(m_shared_state->m_access_group, 0, m_shared_state->m_win);
-                            m_shared_state->m_epoch = true;
-                        });
-                        /*while (!m_shared_state->m_epoch) {}
-                        for (auto& item : m_state->m_put_sends)
-                            GHEX_CHECK_MPI_RESULT(
-                                MPI_Put(item.m_buffer, item.m_size, MPI_BYTE, item.m_rank,
-                                        *(item.m_recv_address), item.m_size, MPI_BYTE, m_shared_state->m_win));*/
-                        return {token, m_shared_state, m_state};
-                    }
-
-
-                    //void post_bulk() {
-                    //    auto& token = *(m_state->m_token_ptr);
-                    //    auto& tp = *(m_shared_state->m_thread_primitives);
-                    //    auto& st = *m_shared_state;
-                    //    /*tp.single(token, [this,&st]() {   
-                    //        MPI_Win_post(st.m_exposure_group, 0, st.m_win);
-                    //        MPI_Win_start(st.m_access_group, 0, st.m_win);
-                    //        //while ( st.m_counter.load() > 0 ) {}
-                    //        while ( st.m_epoch ) {}
-                    //        st.m_counter = st.m_thread_primitives->size();
-                    //        st.m_epoch = true; } );
-                    //    while (!st.m_epoch) {}*/
-
-                    //    //if (++st.m_counter == 1)
-                    //    //tp.master(token, [this,&st]()
-                    //    tp.single(token, [this,&st]()
-                    //    //if (token.id() == 0)
-                    //    {
-                    //        MPI_Win_post(st.m_exposure_group, 0, st.m_win);
-                    //        MPI_Win_start(st.m_access_group, 0, st.m_win);
-                    //        st.m_epoch = true;
-                    //    });
-                    //    //tp.barrier(token);
-                    //    while (!st.m_epoch) {}
-                    //    
-                    //    for (auto& item : m_state->m_put_sends)
-                    //        GHEX_CHECK_MPI_RESULT(
-                    //            MPI_Put(item.m_buffer, item.m_size, MPI_BYTE, item.m_rank,
-                    //                    *(item.m_recv_address), item.m_size, MPI_BYTE, st.m_win));
-                    //}
-
-                    //void wait_bulk() {
-                    //    auto& token = *(m_state->m_token_ptr);
-                    //    auto& tp = *(m_shared_state->m_thread_primitives);
-                    //    auto& st = *m_shared_state;
-                    //    //if (--st.m_counter == 0)
-                    //    tp.barrier(token);
-                    //    //st.m_epoch = false;
-                    //    //tp.barrier(token);
-                    //    tp.single(token, [this,&st]()
-                    //    //if (token.id() == 0)
-                    //    {
-                    //        MPI_Win_complete(st.m_win);
-
-                    //        MPI_Win_wait(st.m_win);
-                    //        st.m_epoch = false;
-
-                    //    });
-                    //    tp.barrier(token);
-                    //}
-
 
                     /** @brief Function to poll the transport layer and check for completion of operations with an
                       * associated callback. When an operation completes, the corresponfing call-back is invoked

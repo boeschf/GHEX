@@ -12,10 +12,10 @@
 #define INCLUDED_GHEX_TL_MPI_COMMUNICATOR_STATE_HPP
 
 #include <vector>
-#include <set>
-#include <atomic>
+#include <memory>
 #include "./error.hpp"
 #include "./future.hpp"
+#include "./window.hpp"
 #include "../callback_utils.hpp"
 
 namespace gridtools {
@@ -25,7 +25,7 @@ namespace gridtools {
         namespace tl {
 
             namespace mpi {
-
+                    
                 /** @brief common data which is shared by all communicators. This class is thread safe.
                   * @tparam ThreadPrimitives The thread primitives type */
                 template<typename ThreadPrimitives>
@@ -40,14 +40,7 @@ namespace gridtools {
                     thread_primitives_type* m_thread_primitives;
                     rank_type m_rank;
                     rank_type m_size;
-                    MPI_Win m_win;
-                    MPI_Group m_group;
-                    MPI_Group m_access_group;
-                    MPI_Group m_exposure_group;
-                    std::set<rank_type> m_access_ranks;
-                    std::set<rank_type> m_exposure_ranks;
-                    volatile bool m_epoch = false;
-                    //std::atomic<int> m_counter;
+                    std::vector<std::unique_ptr<window_t>> m_windows;
 
                     shared_communicator_state(MPI_Comm comm, transport_context_type* tc, thread_primitives_type* tp)
                     : m_comm{comm}
@@ -55,24 +48,7 @@ namespace gridtools {
                     , m_thread_primitives{tp}
                     , m_rank{ [](MPI_Comm c){ int r; GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(c,&r)); return r; }(comm) }
                     , m_size{ [](MPI_Comm c){ int s; GHEX_CHECK_MPI_RESULT(MPI_Comm_size(c,&s)); return s; }(comm) }
-                    //, m_counter{0}
-                    {
-                        GHEX_CHECK_MPI_RESULT(MPI_Win_create_dynamic(MPI_INFO_NULL, m_comm, &m_win));
-                        GHEX_CHECK_MPI_RESULT(MPI_Win_get_group(m_win, &m_group));
-                        //GHEX_CHECK_MPI_RESULT(MPI_Win_get_group(m_win, &m_access_group));
-                        //GHEX_CHECK_MPI_RESULT(MPI_Win_get_group(m_win, &m_exposure_group));
-                        rank_type r = m_rank;
-                        GHEX_CHECK_MPI_RESULT(MPI_Group_incl(m_group, 1, &r, &(m_access_group)));
-                        GHEX_CHECK_MPI_RESULT(MPI_Group_incl(m_group, 1, &r, &(m_exposure_group)));
-                    }
-
-                    ~shared_communicator_state()
-                    {
-                        MPI_Win_free(&m_win);
-                        MPI_Group_free(&m_group);
-                        MPI_Group_free(&m_access_group);
-                        MPI_Group_free(&m_exposure_group);
-                    }
+                    {}
 
                     rank_type rank() const noexcept { return m_rank; }
                     rank_type size() const noexcept { return m_size; }
@@ -92,43 +68,11 @@ namespace gridtools {
                     using queue_type = ::gridtools::ghex::tl::cb::callback_queue<future<void>, rank_type, tag_type>;
                     using progress_status = gridtools::ghex::tl::cb::progress_status;
 
-
-                    struct put_send_t {
-                        const void* m_buffer;
-                        std::size_t m_size;
-                        rank_type m_rank;
-                        future<void> m_future;
-                        std::unique_ptr<MPI_Aint> m_recv_address;
-
-                        put_send_t(const void* p, std::size_t s, rank_type r) noexcept
-                        : m_buffer{p}
-                        , m_size{s}
-                        , m_rank{r}
-                        , m_recv_address{ std::make_unique<MPI_Aint>(0) }
-                        {}
-                    };
-
-                    struct put_recv_t {
-                        void* m_buffer;
-                        future<void> m_future;
-                        std::unique_ptr<MPI_Aint> m_recv_address;
-
-                        put_recv_t(void* p) noexcept
-                        : m_buffer{p}
-                        , m_recv_address{ std::make_unique<MPI_Aint>(0) }
-                        {}
-                    };
-
                     thread_token* m_token_ptr;
                     queue_type m_send_queue;
                     queue_type m_recv_queue;
                     int  m_progressed_sends = 0;
                     int  m_progressed_recvs = 0;
-                    std::vector<put_send_t> m_put_sends;
-                    std::vector<put_recv_t> m_put_recvs;
-                    int m_sync_count = 0;
-                    int m_sync_recv = 0;
-                    int m_sync_send = 0;
 
                     communicator_state(thread_token* t)
                     : m_token_ptr{t}

@@ -11,6 +11,7 @@
 
 #include <ghex/structured/pattern.hpp>
 #include <ghex/communication_object_2.hpp>
+#include <ghex/bulk_communication_object.hpp>
 #ifndef GHEX_TEST_USE_UCX
 #include <ghex/transport_layer/mpi/context.hpp>
 #else
@@ -328,6 +329,10 @@ TEST(communication_object_2, exchange)
 #endif
 
 #if defined(__CUDACC__) || (!defined(__CUDACC__) && defined(GHEX_EMULATE_GPU))
+#pragma message "EMULATE GPUS"
+#ifdef GHEX_HYBRID_TESTS
+#pragma message "AND USE HYBRID"
+#endif
 
     if (local_comm.rank()<num_devices_per_node)
     {
@@ -734,13 +739,33 @@ TEST(communication_object_2, exchange)
 #endif
     }
     else
+#pragma message "else"
 #endif // ifdef CUDA or HYBRID
     {
 
     // exchange
 #ifdef GHEX_TEST_SERIAL
     // blocking variant
-    auto co = gridtools::ghex::make_communication_object<pattern_type>(context.get_communicator(context.get_token()));
+    auto token = context.get_token();
+    auto co = gridtools::ghex::make_communication_object<pattern_type>(context.get_communicator(token));
+
+#pragma message "GHEX_TEST_SERIAL is compiled"
+#ifndef GHEX_TEST_USE_UCX
+    {
+    auto bco = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(
+        context.get_communicator(token),
+        pattern1(field_1a),
+        pattern1(field_1b),
+        pattern2(field_2a),
+        pattern2(field_2b),
+        pattern1(field_3a),
+        pattern1(field_3b)
+    );
+    bco.exchange();
+    }
+        
+#endif
+
     co.bexchange(
         pattern1(field_1a),
         pattern1(field_1b),

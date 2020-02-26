@@ -56,8 +56,8 @@ namespace gridtools {
                     });
             }
             
-            template<typename Map, typename Epoch>
-            static void bulk_pack(Map& map, Epoch& epoch)
+            template<typename Map, typename BulkExchange>
+            static void bulk_pack(Map& map, BulkExchange& ex)
             {
                 for (auto& p0 : map.send_memory)
                 {
@@ -67,7 +67,7 @@ namespace gridtools {
                         {
                             for (const auto& fb : p1.second.field_infos)
                                 fb.call_back( p1.second.buffer.data() + fb.offset, *fb.index_container, nullptr);
-                            epoch.send(p1.second.bulk_send_id);
+                            ex.send(p1.second.bulk_send_id);
                         }
                     }
                 }
