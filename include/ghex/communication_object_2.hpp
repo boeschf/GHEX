@@ -162,9 +162,6 @@ namespace gridtools {
                 std::vector<field_info_type> field_infos;
                 cuda::stream m_cuda_stream;
                 std::size_t bulk_send_id;
-#ifdef GHEX_USE_RMA 
-                typename communicator_type::bulk_send_handle bulk_send_id;
-#endif
             };
 
             /** @brief Holds maps of buffers for send and recieve operations indexed by a domain_id_pair and a device id
@@ -237,51 +234,6 @@ namespace gridtools {
                 pack();
                 return h; 
             }
-           
-#ifdef GHEX_USE_RMA 
-            template<typename... Archs, typename... Fields>
-            void setup_bulk_exchange(buffer_info_type<Archs,Fields>... buffer_infos)
-            {
-                prepare_exchange(buffer_infos...);
-                detail::for_each(m_mem, [this](auto& m)
-                {
-                    for (auto& p0 : m.recv_memory)
-                        for (auto& p1: p0.second)
-                            if (p1.second.size > 0u)
-                            {
-                                p1.second.buffer.resize(p1.second.size);
-                                m_comm.register_recv(p1.second.buffer, p1.second.address, p1.second.tag);
-                            }
-                    for (auto& p0 : m.send_memory)
-                        for (auto& p1: p0.second)
-                            if (p1.second.size > 0u)
-                            {
-                                p1.second.buffer.resize(p1.second.size);
-                                p1.second.bulk_send_id =
-                                m_comm.register_send(p1.second.buffer, p1.second.address, p1.second.tag);
-                            }
-                });
-                m_comm.sync_register();
-            }
-
-            void bulk_exchange()
-            {
-                auto epoch = m_comm.bulk_exchange();
-                detail::for_each(m_mem, [this,&epoch](auto& m)
-                {
-                    using arch_type = typename std::remove_reference_t<decltype(m)>::arch_type;
-                    packer<arch_type>::bulk_pack(m,epoch);
-                });
-                //return m_comm.post_bulk();
-                epoch.wait();
-                detail::for_each(m_mem, [this,&epoch](auto& m)
-                {
-                    using arch_type = typename std::remove_reference_t<decltype(m)>::arch_type;
-                    packer<arch_type>::bulk_unpack(m);
-                });
-
-            }
-#endif
 
         public: // exchange a number of buffer_infos with identical type (same field, device and pattern type)
 
@@ -577,9 +529,6 @@ namespace gridtools {
                                 std::vector<typename BufferType::field_info_type>(),
                                 cuda::stream(),
                                 0u
-#ifdef GHEX_USE_RMA 
-                                , {}
-#endif
                             })).first;
                     }
                     else if (it->second.size==0)

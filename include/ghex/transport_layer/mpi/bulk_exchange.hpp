@@ -17,7 +17,6 @@
 #include "./communicator.hpp"
 #include "../communicator.hpp"
 
-#include <iostream>
 namespace gridtools {
 
     namespace ghex {
@@ -43,11 +42,6 @@ namespace gridtools {
                         bulk_send_handle() noexcept = default;
                         bulk_send_handle(std::size_t i) noexcept : m_index{i} {}
                     };
-                    /*struct bulk_recv_handle {
-                        std::size_t m_index = 0u;
-                        bulk_recv_handle() noexcept = default;
-                        bulk_recv_handle(std::size_t i) noexcept : m_index{i} {}
-                    };*/
 
                 private:
                     struct put_send_t {
@@ -112,10 +106,8 @@ namespace gridtools {
                     bulk_exchange(bulk_exchange&&) = default;
 
                     ~bulk_exchange() {
-                        /*for (auto& item : m_put_recvs)
-                        {std::cout << "detaching memory with address " << item.m_buffer << std::endl;
+                        for (auto& item : m_put_recvs)
                             MPI_Win_detach(m_window->m_win, item.m_buffer);
-                        }*/
                     }
 
                 public:
@@ -137,7 +129,6 @@ namespace gridtools {
                     template<typename Message>
                     void register_recv(Message& msg, rank_type src, tag_type tag) {
                         using value_type = typename Message::value_type;
-                        std::cout << "attaching memory with address " << (void*)(msg.data()) << std::endl;
                         GHEX_CHECK_MPI_RESULT(MPI_Win_attach(m_window->m_win, msg.data(), msg.size()*sizeof(value_type)));
                         m_tp->critical([this, src]() { m_window->m_exposure_ranks.insert(src); });
 
@@ -215,95 +206,6 @@ namespace gridtools {
                                                       *(item.m_recv_address), item.m_size, MPI_BYTE, m_window->m_win));
                     }
                 };
-
-//                struct put_send_t {
-//                    using rank_type = int;
-//                    const void* m_buffer;
-//                    std::size_t m_size;
-//                    rank_type m_rank;
-//                    future<void> m_future;
-//                    std::unique_ptr<MPI_Aint> m_recv_address;
-//
-//                    put_send_t(const void* p, std::size_t s, rank_type r) noexcept
-//                    : m_buffer{p}
-//                    , m_size{s}
-//                    , m_rank{r}
-//                    , m_recv_address{ std::make_unique<MPI_Aint>(0) }
-//                    {}
-//                };
-//
-//                struct put_recv_t {
-//                    using rank_type = int;
-//                    void* m_buffer;
-//                    future<void> m_future;
-//                    std::unique_ptr<MPI_Aint> m_recv_address;
-//
-//                    put_recv_t(void* p) noexcept
-//                    : m_buffer{p}
-//                    , m_recv_address{ std::make_unique<MPI_Aint>(0) }
-//                    {}
-//                };
-//                    
-//                struct window_state {
-//                    std::vector<put_send_t> m_put_sends;
-//                    std::vector<put_recv_t> m_put_recvs;
-//                };
-//
-//                //template<typename ThreadPrimitives>
-//                class window {
-//                  public:
-//                    //using thread_primitives_type = ThreadPrimitives;
-//                    //using transport_context_type = transport_context<mpi_tag, ThreadPrimitives>;
-//                    //using thread_token = typename thread_primitives_type::token;
-//                    using rank_type = int;
-//
-//                  private:
-//                    MPI_Comm m_comm;
-//                    //transport_context_type* m_context;
-//                    //thread_primitives_type* m_thread_primitives;
-//                    //thread_token m_token;
-//                    std::size_t m_index;
-//                    rank_type m_rank;
-//                    MPI_Win m_win;
-//                    MPI_Group m_group;
-//                    MPI_Group m_access_group;
-//                    MPI_Group m_exposure_group;
-//                    std::set<rank_type> m_access_ranks;
-//                    std::set<rank_type> m_exposure_ranks;
-//                    std::vector<window_state> m_states;
-//                    volatile bool m_epoch = false;
-//
-//                  public:
-//                    //window(MPI_Comm comm, transport_context_type* tc, thread_primitives_type* tp, thread_token token, std::size_t idx)
-//                    window(MPI_Comm comm, std::size_t idx, int num_threads)
-//                    : m_comm{comm}
-//                    //, m_context{tc}
-//                    //, m_thread_primitives{tp}
-//                    //, m_token{token}
-//                    , m_index{idx}
-//                    , m_rank{ [](MPI_Comm c){ int r; GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(c,&r)); return r; }(comm) }
-//                    , m_states(num_threads)
-//                    {
-//                        GHEX_CHECK_MPI_RESULT(MPI_Win_create_dynamic(MPI_INFO_NULL, m_comm, &m_win));
-//                        GHEX_CHECK_MPI_RESULT(MPI_Win_get_group(m_win, &m_group));
-//                        rank_type r = m_rank;
-//                        GHEX_CHECK_MPI_RESULT(MPI_Group_incl(m_group, 1, &r, &(m_access_group)));
-//                        GHEX_CHECK_MPI_RESULT(MPI_Group_incl(m_group, 1, &r, &(m_exposure_group)));
-//                    }
-//
-//                    ~window()
-//                    {
-//                        for (auto& st : m_states)
-//                            for (auto& p : st.m_put_recvs)
-//                                GHEX_CHECK_MPI_RESULT(MPI_Win_detach(m_win, p.m_buffer));
-//                                
-//                        MPI_Win_free(&m_win);
-//                        MPI_Group_free(&m_group);
-//                        MPI_Group_free(&m_access_group);
-//                        MPI_Group_free(&m_exposure_group);
-//                    }
-//
-//                };
 
             } // namespace mpi
 

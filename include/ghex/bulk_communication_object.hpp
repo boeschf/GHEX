@@ -23,8 +23,6 @@ namespace gridtools {
         public:
             using communicator_type = typename BulkExchange::communicator_type;
             using base = communication_object<communicator_type,GridType,DomainIdType>;
-            //using grid_type               = GridType;
-            //using domain_id_type          = DomainIdType;
             using pattern_type            = pattern<communicator_type,GridType,DomainIdType>;
             using pattern_container_type  = pattern_container<communicator_type,GridType,DomainIdType>;
             template<typename D, typename F>
