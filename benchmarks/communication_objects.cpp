@@ -32,11 +32,11 @@ using context_type = gridtools::ghex::tl::context<transport, threading>;
 using arch_type = gridtools::ghex::cpu;
 using domain_descriptor_type = gridtools::ghex::structured::domain_descriptor<int,3>;
 
-using float_type = double;
+using float_type = float;
 const std::array<int,3> local_dims = {64, 64, 64};
-const int halo = 5;
+const int halo = 1;
 const int num_fields = 8;
-const int num_repetitions = 50;
+const int num_repetitions = 100;
 
 const std::array<int,3> local_dims_extended = {local_dims[0]+2*halo, local_dims[1]+2*halo, local_dims[2]+2*halo};
 const std::array<int,3> offset = {halo,halo,halo};
@@ -73,12 +73,12 @@ void run_compact(Context& context, Communicator comm, Pattern& pattern, Fields& 
         timer.toc();
     }
     if (comm.rank() == 0)
-        std::cout << "rank 0:    mean exchange time compact:                  " << timer.mean()/1000000
-                  << " ± " << timer.stddev()/1000000 << " s" << std::endl;
+        std::cout << "rank 0:    mean exchange time compact:                  " << timer.mean()/1000
+                  << " ± " << timer.stddev()/1000 << " ms" << std::endl;
     auto global_timer = ::gridtools::ghex::reduce(timer, context.mpi_comm());
     if (comm.rank() == 0)
-        std::cout << "all ranks: mean exchange time compact:                  " << global_timer.mean()/1000000
-                  << " ± " << global_timer.stddev()/1000000 << " s" << std::endl;
+        std::cout << "all ranks: mean exchange time compact:                  " << global_timer.mean()/1000
+                  << " ± " << global_timer.stddev()/1000 << " ms" << std::endl;
 }
 
 template<typename Context, typename Communicator, typename Pattern, typename Fields>
@@ -116,12 +116,12 @@ void run_sequence_Nco(Context& context, Communicator comm, Pattern& pattern, Fie
         timer.toc();
     }
     if (comm.rank() == 0)
-        std::cout << "rank 0:    mean exchange time sequenced (multiple CO):  " << timer.mean()/1000000
-                  << " ± " << timer.stddev()/1000000 << " s" << std::endl;
+        std::cout << "rank 0:    mean exchange time sequenced (multiple CO):  " << timer.mean()/1000
+                  << " ± " << timer.stddev()/1000 << " ms" << std::endl;
     auto global_timer = ::gridtools::ghex::reduce(timer, context.mpi_comm());
     if (comm.rank() == 0)
-        std::cout << "all ranks: mean exchange time sequenced (multiple CO):  " << global_timer.mean()/1000000
-                  << " ± " << global_timer.stddev()/1000000 << " s" << std::endl;
+        std::cout << "all ranks: mean exchange time sequenced (multiple CO):  " << global_timer.mean()/1000
+                  << " ± " << global_timer.stddev()/1000 << " ms" << std::endl;
 }
 
 template<typename Context, typename Communicator, typename Pattern, typename Fields>
@@ -152,12 +152,12 @@ void run_sequence_1co(Context& context, Communicator comm, Pattern& pattern, Fie
         timer.toc();
     }
     if (comm.rank() == 0)
-        std::cout << "rank 0:    mean exchange time sequenced (single CO):    " << timer.mean()/1000000
-                  << " ± " << timer.stddev()/1000000 << " s" << std::endl;
+        std::cout << "rank 0:    mean exchange time sequenced (single CO):    " << timer.mean()/1000
+                  << " ± " << timer.stddev()/1000 << " ms" << std::endl;
     auto global_timer = ::gridtools::ghex::reduce(timer, context.mpi_comm());
     if (comm.rank() == 0)
-        std::cout << "all ranks: mean exchange time sequenced (single CO):    " << global_timer.mean()/1000000
-                  << " ± " << global_timer.stddev()/1000000 << " s" << std::endl;
+        std::cout << "all ranks: mean exchange time sequenced (single CO):    " << global_timer.mean()/1000
+                  << " ± " << global_timer.stddev()/1000 << " ms" << std::endl;
 }
 
 template<typename Context, typename Communicator, typename Pattern, typename Fields>
@@ -183,15 +183,15 @@ void run_rma(Context& context, Communicator comm, Pattern& pattern, Fields& fiel
         timer.toc();
     }
     if (comm.rank() == 0)
-        std::cout << "rank 0:    mean exchange time RMA:                      " << timer.mean()/1000000
-                  << " ± " << timer.stddev()/1000000 << " s" << std::endl;
+        std::cout << "rank 0:    mean exchange time RMA:                      " << timer.mean()/1000
+                  << " ± " << timer.stddev()/1000 << " ms" << std::endl;
     auto global_timer = ::gridtools::ghex::reduce(timer, context.mpi_comm());
     if (comm.rank() == 0)
-        std::cout << "all ranks: mean exchange time RMA:                      " << global_timer.mean()/1000000
-                  << " ± " << global_timer.stddev()/1000000 << " s" << std::endl;
+        std::cout << "all ranks: mean exchange time RMA:                      " << global_timer.mean()/1000
+                  << " ± " << global_timer.stddev()/1000 << " ms" << std::endl;
 }
 
-TEST(CommunicationObjects, compact) {
+TEST(CommunicationObjects, strategies) {
     int world_size;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
     int dims[3] = {0,0,0};
