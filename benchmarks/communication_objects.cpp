@@ -191,6 +191,49 @@ void run_rma(Context& context, Communicator comm, Pattern& pattern, Fields& fiel
                   << " ± " << global_timer.stddev()/1000 << " ms" << std::endl;
 }
 
+template<typename Context, typename Communicator, typename Pattern, typename Fields>
+void run_rma_sequenced(Context& context, Communicator comm, Pattern& pattern, Fields& fields) {
+    // communication object
+    auto co_0 = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(comm, pattern(fields[0]));
+    auto co_1 = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(comm, pattern(fields[1]));
+    auto co_2 = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(comm, pattern(fields[2]));
+    auto co_3 = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(comm, pattern(fields[3]));
+    auto co_4 = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(comm, pattern(fields[4]));
+    auto co_5 = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(comm, pattern(fields[5]));
+    auto co_6 = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(comm, pattern(fields[6]));
+    auto co_7 = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(comm, pattern(fields[7]));
+    timer_type timer;
+    // exchange
+    co_0.exchange();
+    co_1.exchange();
+    co_2.exchange();
+    co_3.exchange();
+    co_4.exchange();
+    co_5.exchange();
+    co_6.exchange();
+    co_7.exchange();
+    for (int i=0; i<num_repetitions; ++i)
+    {
+        timer.tic();
+        co_0.exchange();
+        co_1.exchange();
+        co_2.exchange();
+        co_3.exchange();
+        co_4.exchange();
+        co_5.exchange();
+        co_6.exchange();
+        co_7.exchange();
+        timer.toc();
+    }
+    if (comm.rank() == 0)
+        std::cout << "rank 0:    mean exchange time RMA sequenced:            " << timer.mean()/1000
+                  << " ± " << timer.stddev()/1000 << " ms" << std::endl;
+    auto global_timer = ::gridtools::ghex::reduce(timer, context.mpi_comm());
+    if (comm.rank() == 0)
+        std::cout << "all ranks: mean exchange time RMA sequenced:            " << global_timer.mean()/1000
+                  << " ± " << global_timer.stddev()/1000 << " ms" << std::endl;
+}
+
 TEST(CommunicationObjects, strategies) {
     int world_size;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
@@ -242,7 +285,9 @@ TEST(CommunicationObjects, strategies) {
     
     run_sequence_1co(context, comm, pattern, fields);
     
-    //run_rma(context, comm, pattern, fields);
+    run_rma(context, comm, pattern, fields);
+
+    run_rma_sequenced(context, comm, pattern, fields);
 
     }
 
