@@ -76,6 +76,24 @@ namespace gridtools {
                     packer<arch_type>::bulk_unpack(m);
                 });
             }
+
+            void start_exchange() {
+                m_bulk_exchange.start_epoch();
+                detail::for_each(this->m_mem, [this](auto& m)
+                {
+                    using arch_type = typename std::remove_reference_t<decltype(m)>::arch_type;
+                    packer<arch_type>::bulk_pack(m,m_bulk_exchange);
+                });
+            }
+
+            void end_exchange() {
+                m_bulk_exchange.end_epoch();
+                detail::for_each(this->m_mem, [this](auto& m)
+                {
+                    using arch_type = typename std::remove_reference_t<decltype(m)>::arch_type;
+                    packer<arch_type>::bulk_unpack(m);
+                });
+            }
         };
 
 

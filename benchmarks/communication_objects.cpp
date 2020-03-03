@@ -215,14 +215,22 @@ void run_rma_sequenced(Context& context, Communicator comm, Pattern& pattern, Fi
     for (int i=0; i<num_repetitions; ++i)
     {
         timer.tic();
-        co_0.exchange();
-        co_1.exchange();
-        co_2.exchange();
-        co_3.exchange();
-        co_4.exchange();
-        co_5.exchange();
-        co_6.exchange();
-        co_7.exchange();
+        co_0.start_exchange();
+        co_1.start_exchange();
+        co_2.start_exchange();
+        co_3.start_exchange();
+        co_4.start_exchange();
+        co_5.start_exchange();
+        co_6.start_exchange();
+        co_7.start_exchange();
+        co_0.end_exchange();
+        co_1.end_exchange();
+        co_2.end_exchange();
+        co_3.end_exchange();
+        co_4.end_exchange();
+        co_5.end_exchange();
+        co_6.end_exchange();
+        co_7.end_exchange();
         timer.toc();
     }
     if (comm.rank() == 0)

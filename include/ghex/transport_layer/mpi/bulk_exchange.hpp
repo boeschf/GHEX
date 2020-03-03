@@ -90,12 +90,12 @@ namespace gridtools {
                         m_tp->single(m_token, [this]() {
                             m_comm.m_shared_state->m_windows.push_back(std::make_unique<window_t>(m_comm.m_shared_state->m_comm));
                             m_window = m_comm.m_shared_state->m_windows.back().get();
-                            MPI_Info info;
-                            GHEX_CHECK_MPI_RESULT(MPI_Info_create(&info));
-                            GHEX_CHECK_MPI_RESULT(MPI_Info_set(info, "no_locks", "true"));
-                            GHEX_CHECK_MPI_RESULT(MPI_Win_create_dynamic(info, m_window->m_comm, &(m_window->m_win)));
-                            GHEX_CHECK_MPI_RESULT(MPI_Info_free(&info));
-                            //GHEX_CHECK_MPI_RESULT(MPI_Win_create_dynamic(MPI_INFO_NULL, m_window->m_comm, &(m_window->m_win)));
+                            //MPI_Info info;
+                            //GHEX_CHECK_MPI_RESULT(MPI_Info_create(&info));
+                            //GHEX_CHECK_MPI_RESULT(MPI_Info_set(info, "no_locks", "true"));
+                            //GHEX_CHECK_MPI_RESULT(MPI_Win_create_dynamic(info, m_window->m_comm, &(m_window->m_win)));
+                            //GHEX_CHECK_MPI_RESULT(MPI_Info_free(&info));
+                            GHEX_CHECK_MPI_RESULT(MPI_Win_create_dynamic(MPI_INFO_NULL, m_window->m_comm, &(m_window->m_win)));
                             GHEX_CHECK_MPI_RESULT(MPI_Win_get_group(m_window->m_win, &(m_window->m_group)));
                             auto r = m_comm.rank();
                             GHEX_CHECK_MPI_RESULT(MPI_Group_incl(m_window->m_group, 1, &r, &(m_window->m_access_group)));
