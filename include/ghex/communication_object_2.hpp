@@ -377,11 +377,13 @@ namespace gridtools {
                         {
                             if (p1.second.size > 0u)
                             {
+                                using future_t = std::remove_reference_t<decltype(m_comm.recv(p1.second.buffer, p1.second.address, p1.second.tag))>;
                                 p1.second.buffer.resize(p1.second.size);
                                 m.m_recv_futures.emplace_back(
                                     typename std::remove_reference_t<decltype(m)>::future_type{
                                         &p1.second,
-                                        m_comm.recv(p1.second.buffer, p1.second.address, p1.second.tag).m_handle});
+                                        future_t{}.m_handle});
+                                        //m_comm.recv(p1.second.buffer, p1.second.address, p1.second.tag).m_handle});
                             }
                         }
                     }

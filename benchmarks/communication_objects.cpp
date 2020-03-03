@@ -204,7 +204,7 @@ void run_rma_sequenced(Context& context, Communicator comm, Pattern& pattern, Fi
     auto co_7 = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(comm, pattern(fields[7]));
     timer_type timer;
     // exchange
-    co_0.exchange()
+    co_0.exchange();
     co_1.exchange();
     co_2.exchange();
     co_3.exchange();
@@ -215,7 +215,7 @@ void run_rma_sequenced(Context& context, Communicator comm, Pattern& pattern, Fi
     for (int i=0; i<num_repetitions; ++i)
     {
         timer.tic();
-        co_0.exchange()
+        co_0.exchange();
         co_1.exchange();
         co_2.exchange();
         co_3.exchange();
@@ -301,9 +301,9 @@ TEST(CommunicationObjects, strategies) {
     
     run_sequence_1co(context, comm, pattern, fields);
     
-    run_rma(context, comm, pattern, fields);
+    //run_rma(context, comm, pattern, fields);
 
-    run_rma_sequenced(context, comm, pattern, fields);
+    //run_rma_sequenced(context, comm, pattern, fields);
 
     }
 
