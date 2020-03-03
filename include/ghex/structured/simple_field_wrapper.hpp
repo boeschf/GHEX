@@ -96,13 +96,27 @@ namespace structured {
         static void pack(T* buffer, const IndexContainer& c, const T* m_data, const Strides& m_byte_strides, 
                          const Array& m_offsets, void*)
         {
-            for (const auto& is : c)
+            /*for (const auto& is : c)
             {
                 ::gridtools::ghex::detail::for_loop_pointer_arithmetic<Dimension::value,Dimension::value,Layout>::apply(
                     [m_data,buffer](auto o_data, auto o_buffer)
                     {
                         *reinterpret_cast<T*>(reinterpret_cast<char*>(buffer)+o_buffer) = 
                         *reinterpret_cast<const T*>(reinterpret_cast<const char*>(m_data)+o_data); 
+                    }, 
+                    is.local().first(), 
+                    is.local().last(),
+                    m_byte_strides,
+                    m_offsets
+                    );
+                buffer += is.size();
+            }*/
+            for (const auto& is : c)
+            {
+                ::gridtools::ghex::detail::for_loop_pointer_arithmetic<Dimension::value,Dimension::value,Layout>::apply(
+                    [m_data,buffer](auto o_data, auto o_buffer, std::size_t length)
+                    {
+                        std::memcpy(reinterpret_cast<char*>(buffer)+o_buffer, reinterpret_cast<const char*>(m_data)+o_data, length*sizeof(T));
                     }, 
                     is.local().first(), 
                     is.local().last(),
@@ -118,13 +132,27 @@ namespace structured {
         static void unpack(const T* buffer, const IndexContainer& c, T* m_data, const Strides& m_byte_strides, 
                            const Array& m_offsets, void*)
         {
-            for (const auto& is : c)
+            /*for (const auto& is : c)
             {
                 ::gridtools::ghex::detail::for_loop_pointer_arithmetic<Dimension::value,Dimension::value,Layout>::apply(
                     [m_data,buffer](auto o_data, auto o_buffer)
                     {
                         *reinterpret_cast<T*>(reinterpret_cast<char*>(m_data)+o_data) = 
                         *reinterpret_cast<const T*>(reinterpret_cast<const char*>(buffer)+o_buffer); 
+                    }, 
+                    is.local().first(), 
+                    is.local().last(),
+                    m_byte_strides,
+                    m_offsets
+                    );
+                buffer += is.size();
+            }*/
+            for (const auto& is : c)
+            {
+                ::gridtools::ghex::detail::for_loop_pointer_arithmetic<Dimension::value,Dimension::value,Layout>::apply(
+                    [m_data,buffer](auto o_data, auto o_buffer, std::size_t length)
+                    {
+                        std::memcpy(reinterpret_cast<char*>(m_data)+o_data, reinterpret_cast<const char*>(buffer)+o_buffer, length*sizeof(T));
                     }, 
                     is.local().first(), 
                     is.local().last(),

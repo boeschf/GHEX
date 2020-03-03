@@ -253,6 +253,25 @@ namespace gridtools {
                     }
                 }
             };
+            
+            // end of recursion
+            template<int D, int... Args>
+            struct for_loop_pointer_arithmetic<D,1,gridtools::layout_map<Args...>>
+            {
+                using layout_t = gridtools::layout_map<Args...>;
+                using idx = std::integral_constant<int, layout_t::template find<D-1>()>;
+                
+                template<typename Func, typename Array, typename Strides, typename Array2>
+                GT_FORCE_INLINE static void apply(Func&& f, Array&& first, Array&& last, Strides&& byte_strides, Array2&& coordinate_offset, 
+                                         std::size_t offset, std::size_t iter) noexcept
+                {
+                    const std::size_t length = last[idx::value]-first[idx::value]+1;
+                    iter   *= length;
+                    f(offset+(first[idx::value]+coordinate_offset[idx::value])*byte_strides[idx::value],
+                    iter*byte_strides[idx::value],
+                    length);
+                }
+            };
 
             // end of recursion
             template<int D, int... Args>
