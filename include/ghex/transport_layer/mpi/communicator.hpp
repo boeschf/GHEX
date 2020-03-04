@@ -19,6 +19,7 @@
 #include "./request_cb.hpp"
 #include "../context.hpp"
 #include "./communicator_state.hpp"
+#include "./subarray.hpp"
 
 namespace gridtools {
     
@@ -110,6 +111,52 @@ namespace gridtools {
                                                         src, tag, m_shared_state->m_comm, &req.get()));
                         req.m_kind = request_kind::recv;
                         return req;
+                    }
+                    
+                    template<int... Order>
+                    [[nodiscard]] future<void> send(const std::vector<::gridtools::ghex::structured::subarray<Order...>>& subarrays, rank_type dst, tag_type tag) {
+                        auto t = m_state->m_subarray_cache.get_type(subarrays);
+                        request req;
+                        GHEX_CHECK_MPI_RESULT(MPI_Isend((const void*)0, 1, t, dst, tag, 
+                                                        m_shared_state->m_comm, &req.get()));
+                        req.m_kind = request_kind::send;
+                        return req;
+                    }
+
+                    template<int... Order>
+                    [[nodiscard]] future<void> recv(const std::vector<::gridtools::ghex::structured::subarray<Order...>>& subarrays, rank_type src, tag_type tag) {
+                        auto t = m_state->m_subarray_cache.get_type(subarrays);
+                        request req;
+                        GHEX_CHECK_MPI_RESULT(MPI_Irecv((void*)0, 1, t, src, tag, 
+                                                        m_shared_state->m_comm, &req.get()));
+                        req.m_kind = request_kind::recv;
+                        return req;
+
+
+                        //int layout[] = {Order...};
+                        //for (const auto& sa : subarrays) {
+                        //    std::cout << "  subarray " <<  sa.m_data << " with " << sa.m_regions.size() << " regions and order = ";
+                        //    for (unsigned int d=0; d<sizeof...(Order); ++d) std::cout << layout[d] << " ";
+                        //    std::cout << " and offset = ";
+                        //    for (unsigned int d=0; d<sizeof...(Order); ++d) std::cout << sa.m_offset[d] << " ";
+                        //    std::cout << " and strides = ";
+                        //    for (unsigned int d=0; d<sizeof...(Order); ++d) std::cout << sa.m_stride[d] << " ";
+                        //    std::cout << std::endl;
+
+                        //    auto regions = cache.make_regions<Order...>(sa);
+                        //    for (const auto& r : regions) {
+                        //        /*std::cout << "      extent: ";
+                        //        for (const auto& x : r.m_region.m_extent) std::cout << x << " ";
+                        //        std::cout << ", stride: ";
+                        //        for (const auto& x : r.m_region.m_stride) std::cout << x << " ";*/
+                        //        std::cout << ", offset: " << r.m_offset;
+                        //        std::cout << ", map ptr: " << r.m_map_ptr;
+                        //        std::cout << std::endl;
+                        //    }
+                        //}
+
+
+
                     }
 
                     /** @brief Function to poll the transport layer and check for completion of operations with an

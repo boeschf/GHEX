@@ -14,6 +14,7 @@
 #include <vector>
 #include <memory>
 #include "./error.hpp"
+#include "./subarray.hpp"
 #include "./future.hpp"
 #include "./window.hpp"
 #include "../callback_utils.hpp"
@@ -73,6 +74,7 @@ namespace gridtools {
                     queue_type m_recv_queue;
                     int  m_progressed_sends = 0;
                     int  m_progressed_recvs = 0;
+                    subarray_cache m_subarray_cache;
 
                     communicator_state(thread_token* t)
                     : m_token_ptr{t}

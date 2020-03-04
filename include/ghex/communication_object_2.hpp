@@ -11,6 +11,7 @@
 #ifndef INCLUDED_GHEX_COMMUNICATION_OBJECT_2_HPP
 #define INCLUDED_GHEX_COMMUNICATION_OBJECT_2_HPP
 
+#include "./structured/subarray.hpp"
 #include "./cuda_utils/stream.hpp"
 #include "./packer.hpp"
 #include "./common/utils.hpp"
@@ -22,6 +23,8 @@
 #include <map>
 #include <stdio.h>
 #include <functional>
+//#include <boost/interprocess/ipc/message_queue.hpp>
+
 
 namespace gridtools {
 
@@ -162,6 +165,7 @@ namespace gridtools {
                 std::vector<field_info_type> field_infos;
                 cuda::stream m_cuda_stream;
                 std::size_t bulk_send_id;
+                //std::unique_ptr<boost::interprocess::message_queue> msg_queue_ptr;
             };
 
             /** @brief Holds maps of buffers for send and recieve operations indexed by a domain_id_pair and a device id
@@ -198,6 +202,7 @@ namespace gridtools {
             communicator_type m_comm;
             memory_type m_mem;
             std::vector<typename communicator_type::template future<void>> m_send_futures;
+            std::vector<typename communicator_type::template future<void>> m_recv_futures;
 
         public: // ctors
 
@@ -233,6 +238,69 @@ namespace gridtools {
                 post_recvs();
                 pack();
                 return h; 
+            }
+            
+            template<typename T, typename... Archs, int... Order>
+            [[nodiscard]] handle_type exchange(
+                buffer_info_type<
+                    Archs,
+                    structured::simple_field_wrapper<T,cpu,structured::domain_descriptor<domain_id_type,sizeof...(Order)>,Order...>
+                >... buffer_infos)
+            {
+                prepare_exchange(buffer_infos...);
+                using field_type = structured::simple_field_wrapper<T,cpu,structured::domain_descriptor<domain_id_type,sizeof...(Order)>,Order...>;
+                auto mem_ptr = &(std::get<buffer_memory<cpu>>(m_mem));
+                for (auto& p0 : mem_ptr->recv_memory)
+                    for (auto& p1: p0.second)
+                        if (p1.second.size > 0u) {
+                            std::vector<structured::subarray<Order...>> subarrays;
+                            for (auto& f_info : p1.second.field_infos) {
+                                auto field_ptr = reinterpret_cast<field_type*>(f_info.field_ptr);
+                                T* origin = field_ptr->data();
+                                const auto byte_strides = field_ptr->byte_strides();
+                                const auto offsets = field_ptr->offsets();
+                                subarrays.emplace_back(origin,offsets,byte_strides);
+                                for (const auto& is : *(f_info.index_container)) {
+                                    const auto first = is.local().first();
+                                    const auto last = is.local().last();
+                                    const auto extent = last-first + 1; 
+                                    subarrays.back().m_regions.emplace_back(first,extent);
+                                }
+                            }
+                            const auto src = p1.second.address; 
+                            const auto tag = p1.second.tag; 
+                            m_recv_futures.push_back(m_comm.recv(std::move(subarrays), src, tag));
+                        }
+                for (auto& p0 : mem_ptr->send_memory)
+                    for (auto& p1: p0.second)
+                        if (p1.second.size > 0u) {
+                            std::vector<structured::subarray<Order...>> subarrays;
+                            for (auto& f_info : p1.second.field_infos) {
+                                auto field_ptr = reinterpret_cast<field_type*>(f_info.field_ptr);
+                                T* origin = field_ptr->data();
+                                const auto byte_strides = field_ptr->byte_strides();
+                                const auto offsets = field_ptr->offsets();
+                                subarrays.emplace_back(origin,offsets,byte_strides);
+                                for (const auto& is : *(f_info.index_container)) {
+                                    const auto first = is.local().first();
+                                    const auto last = is.local().last();
+                                    const auto extent = last-first + 1; 
+                                    subarrays.back().m_regions.emplace_back(first,extent);
+                                }
+                            }
+                            const auto dst = p1.second.address; 
+                            const auto tag = p1.second.tag; 
+                            m_send_futures.push_back(m_comm.send(std::move(subarrays), dst, tag));
+                        }
+
+                return { m_comm, [this](){
+                    
+                    if (!m_valid) return;
+                    for (auto& f : m_recv_futures) f.wait();
+                    for (auto& f : m_send_futures) f.wait();
+                    m_recv_futures.clear();
+                    clear();
+                }};
             }
 
         public: // exchange a number of buffer_infos with identical type (same field, device and pattern type)
@@ -529,6 +597,7 @@ namespace gridtools {
                                 std::vector<typename BufferType::field_info_type>(),
                                 cuda::stream(),
                                 0u
+                                //,{}
                             })).first;
                     }
                     else if (it->second.size==0)
