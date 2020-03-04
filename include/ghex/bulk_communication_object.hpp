@@ -29,12 +29,83 @@ namespace gridtools {
             using buffer_info_type        = buffer_info<pattern_type,D,F>;
 
         private:
-            //co_type m_co;
-            BulkExchange m_bulk_exchange;
+            //BulkExchange m_bulk_exchange;
+            
+            using data_type = typename communicator_type::mpi_data_type;
+            using rank_type = typename communicator_type::rank_type;
+            using tag_type  = typename communicator_type::tag_type;
+
+            struct info {
+                data_type mpi_type;
+                rank_type rank;
+                tag_type tag;
+                typename communicator_type::template future<void> fut;
+            };
+
+            std::vector<info> sends;
+            std::vector<info> recvs;
 
         public:
+            
+            template<typename T, typename... Archs, int... Order>
+            bulk_communication_object(communicator_type comm,
+                buffer_info_type<
+                    Archs,
+                    structured::simple_field_wrapper<T,cpu,structured::domain_descriptor<DomainIdType,sizeof...(Order)>,Order...>
+                >... buffer_infos)
+            : base(comm)
+            {
+                this->prepare_exchange(buffer_infos...);
+                using field_type = structured::simple_field_wrapper<T,cpu,structured::domain_descriptor<DomainIdType,sizeof...(Order)>,Order...>;
+                auto mem_ptr = &(std::get<typename base::template buffer_memory<cpu>>(this->m_mem));
+                for (auto& p0 : mem_ptr->recv_memory)
+                    for (auto& p1: p0.second)
+                        if (p1.second.size > 0u) {
+                            std::vector<structured::subarray<Order...>> subarrays;
+                            for (auto& f_info : p1.second.field_infos) {
+                                auto field_ptr = reinterpret_cast<field_type*>(f_info.field_ptr);
+                                T* origin = field_ptr->data();
+                                const auto byte_strides = field_ptr->byte_strides();
+                                const auto offsets = field_ptr->offsets();
+                                subarrays.emplace_back(origin,offsets,byte_strides);
+                                for (const auto& is : *(f_info.index_container)) {
+                                    const auto first = is.local().first();
+                                    const auto last = is.local().last();
+                                    const auto extent = last-first + 1; 
+                                    subarrays.back().m_regions.emplace_back(first,extent);
+                                }
+                            }
+                            recvs.push_back(info{this->m_comm.get_type(subarrays), p1.second.address, p1.second.tag, {}});
+                        }
+                for (auto& p0 : mem_ptr->send_memory)
+                    for (auto& p1: p0.second)
+                        if (p1.second.size > 0u) {
+                            std::vector<structured::subarray<Order...>> subarrays;
+                            for (auto& f_info : p1.second.field_infos) {
+                                auto field_ptr = reinterpret_cast<field_type*>(f_info.field_ptr);
+                                T* origin = field_ptr->data();
+                                const auto byte_strides = field_ptr->byte_strides();
+                                const auto offsets = field_ptr->offsets();
+                                subarrays.emplace_back(origin,offsets,byte_strides);
+                                for (const auto& is : *(f_info.index_container)) {
+                                    const auto first = is.local().first();
+                                    const auto last = is.local().last();
+                                    const auto extent = last-first + 1; 
+                                    subarrays.back().m_regions.emplace_back(first,extent);
+                                }
+                            }
+                            sends.push_back(info{this->m_comm.get_type(subarrays), p1.second.address, p1.second.tag, {}});
+                        }
+            }
+            
+            void exchange() {
+                for (auto& i : recvs) i.fut = this->m_comm.recv((void*)0, i.mpi_type, i.rank, i.tag);
+                for (auto& i : sends) i.fut = this->m_comm.send((const void*)0, i.mpi_type, i.rank, i.tag);
+                for (auto& i : sends) i.fut.wait();
+                for (auto& i : recvs) i.fut.wait();
+            }
 
-            template<typename... Archs, typename... Fields>
+            /*template<typename... Archs, typename... Fields>
             bulk_communication_object(communicator_type comm, buffer_info_type<Archs,Fields>... buffer_infos)
             : base(comm)
             , m_bulk_exchange(comm)
@@ -75,9 +146,9 @@ namespace gridtools {
                     using arch_type = typename std::remove_reference_t<decltype(m)>::arch_type;
                     packer<arch_type>::bulk_unpack(m);
                 });
-            }
+            }*/
 
-            void start_exchange() {
+            /*void start_exchange() {
                 m_bulk_exchange.start_epoch();
                 detail::for_each(this->m_mem, [this](auto& m)
                 {
@@ -93,7 +164,7 @@ namespace gridtools {
                     using arch_type = typename std::remove_reference_t<decltype(m)>::arch_type;
                     packer<arch_type>::bulk_unpack(m);
                 });
-            }
+            }*/
         };
 
 

@@ -33,8 +33,8 @@ using arch_type = gridtools::ghex::cpu;
 using domain_descriptor_type = gridtools::ghex::structured::domain_descriptor<int,3>;
 
 using float_type = float;
-const std::array<int,3> local_dims = {64, 64, 64};
-const int halo = 1;
+const std::array<int,3> local_dims = {128, 128, 128};
+const int halo = 5;
 const int num_fields = 8;
 const int num_repetitions = 100;
 
@@ -183,11 +183,11 @@ void run_rma(Context& context, Communicator comm, Pattern& pattern, Fields& fiel
         timer.toc();
     }
     if (comm.rank() == 0)
-        std::cout << "rank 0:    mean exchange time RMA:                      " << timer.mean()/1000
+        std::cout << "rank 0:    mean exchange time types:                    " << timer.mean()/1000
                   << " ± " << timer.stddev()/1000 << " ms" << std::endl;
     auto global_timer = ::gridtools::ghex::reduce(timer, context.mpi_comm());
     if (comm.rank() == 0)
-        std::cout << "all ranks: mean exchange time RMA:                      " << global_timer.mean()/1000
+        std::cout << "all ranks: mean exchange time types:                    " << global_timer.mean()/1000
                   << " ± " << global_timer.stddev()/1000 << " ms" << std::endl;
 }
 
@@ -226,11 +226,11 @@ void run_rma_sequenced(Context& context, Communicator comm, Pattern& pattern, Fi
         timer.toc();
     }
     if (comm.rank() == 0)
-        std::cout << "rank 0:    mean exchange time RMA sequenced:            " << timer.mean()/1000
+        std::cout << "rank 0:    mean exchange time types sequenced:          " << timer.mean()/1000
                   << " ± " << timer.stddev()/1000 << " ms" << std::endl;
     auto global_timer = ::gridtools::ghex::reduce(timer, context.mpi_comm());
     if (comm.rank() == 0)
-        std::cout << "all ranks: mean exchange time RMA sequenced:            " << global_timer.mean()/1000
+        std::cout << "all ranks: mean exchange time types sequenced:          " << global_timer.mean()/1000
                   << " ± " << global_timer.stddev()/1000 << " ms" << std::endl;
 }
 
@@ -280,14 +280,16 @@ TEST(CommunicationObjects, strategies) {
         fields.push_back(gridtools::ghex::wrap_field<arch_type,2,1,0>(comm.rank(), ptr, offset, local_dims_extended));
 
     run_compact(context, comm, pattern, fields);
-
     run_sequence_Nco(context, comm, pattern, fields);
-    
     run_sequence_1co(context, comm, pattern, fields);
-    
-    //run_rma(context, comm, pattern, fields);
+    run_rma(context, comm, pattern, fields);
+    run_rma_sequenced(context, comm, pattern, fields);
 
-    //run_rma_sequenced(context, comm, pattern, fields);
+    run_compact(context, comm, pattern, fields);
+    run_sequence_Nco(context, comm, pattern, fields);
+    run_sequence_1co(context, comm, pattern, fields);
+    run_rma(context, comm, pattern, fields);
+    run_rma_sequenced(context, comm, pattern, fields);
 
     }
 

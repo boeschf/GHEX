@@ -242,9 +242,12 @@ TEST(communication_object_2, exchange)
     using T2 = double;
     using T3 = double;
 #else
+    //using T1 = double;
+    //using T2 = float;
+    //using T3 = int;
     using T1 = double;
-    using T2 = float;
-    using T3 = int;
+    using T2 = double;
+    using T3 = double;
 #endif
     using TT1 = array_type<T1,3>;
     using TT2 = array_type<T2,3>;
@@ -396,18 +399,18 @@ TEST(communication_object_2, exchange)
 #ifdef GHEX_TEST_SERIAL
     // blocking variant
 #ifdef GHEX_HYBRID_TESTS
-#ifndef GHEX_TEST_USE_UCX
-    auto bco = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(
-        context.get_communicator(context.get_token()),
-        pattern1(field_1a_gpu),
-        pattern1(field_1b),
-        pattern2(field_2a_gpu),
-        pattern2(field_2b),
-        pattern1(field_3a_gpu),
-        pattern1(field_3b)
-    );
-    bco.exchange();
-#else 
+//#ifndef GHEX_TEST_USE_UCX
+//    auto bco = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(
+//        context.get_communicator(context.get_token()),
+//        pattern1(field_1a_gpu),
+//        pattern1(field_1b),
+//        pattern2(field_2a_gpu),
+//        pattern2(field_2b),
+//        pattern1(field_3a_gpu),
+//        pattern1(field_3b)
+//    );
+//    bco.exchange();
+//#else 
     auto co = gridtools::ghex::make_communication_object<pattern_type>(context.get_communicator(context.get_token()));
     co.bexchange(
         pattern1(field_1a_gpu),
@@ -417,20 +420,20 @@ TEST(communication_object_2, exchange)
         pattern1(field_3a_gpu),
         pattern1(field_3b)
     );
-#endif
+//#endif
 #else
-#ifndef GHEX_TEST_USE_UCX
-    auto bco = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(
-        context.get_communicator(context.get_token()),
-        pattern1(field_1a_gpu),
-        pattern1(field_1b_gpu),
-        pattern2(field_2a_gpu),
-        pattern2(field_2b_gpu),
-        pattern1(field_3a_gpu),
-        pattern1(field_3b_gpu)
-    );
-    bco.exchange();
-#else 
+//#ifndef GHEX_TEST_USE_UCX
+//    auto bco = gridtools::ghex::make_bulk_communication_object<context_type::bulk_exchange_type>(
+//        context.get_communicator(context.get_token()),
+//        pattern1(field_1a_gpu),
+//        pattern1(field_1b_gpu),
+//        pattern2(field_2a_gpu),
+//        pattern2(field_2b_gpu),
+//        pattern1(field_3a_gpu),
+//        pattern1(field_3b_gpu)
+//    );
+//    bco.exchange();
+//#else 
     auto co = gridtools::ghex::make_communication_object<pattern_type>(context.get_communicator(context.get_token()));
     co.bexchange(
         pattern1(field_1a_gpu),
@@ -440,7 +443,7 @@ TEST(communication_object_2, exchange)
         pattern1(field_3a_gpu),
         pattern1(field_3b_gpu)
     );
-#endif
+//#endif
 #endif
 #endif
 #ifdef GHEX_TEST_SERIAL_VECTOR

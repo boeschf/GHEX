@@ -240,7 +240,7 @@ namespace gridtools {
                 return h; 
             }
             
-            template<typename T, typename... Archs, int... Order>
+            /*template<typename T, typename... Archs, int... Order>
             [[nodiscard]] handle_type exchange(
                 buffer_info_type<
                     Archs,
@@ -301,7 +301,7 @@ namespace gridtools {
                     m_recv_futures.clear();
                     clear();
                 }};
-            }
+            }*/
 
         public: // exchange a number of buffer_infos with identical type (same field, device and pattern type)
 
