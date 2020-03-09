@@ -33,7 +33,7 @@ using arch_type = gridtools::ghex::cpu;
 using domain_descriptor_type = gridtools::ghex::structured::domain_descriptor<int,3>;
 
 using float_type = float;
-const std::array<int,3> local_dims = {128, 128, 128};
+const std::array<int,3> local_dims = {64, 64, 64};
 const int halo = 5;
 const int num_fields = 8;
 const int num_repetitions = 100;
@@ -283,13 +283,13 @@ TEST(CommunicationObjects, strategies) {
     run_sequence_Nco(context, comm, pattern, fields);
     run_sequence_1co(context, comm, pattern, fields);
     run_rma(context, comm, pattern, fields);
-    run_rma_sequenced(context, comm, pattern, fields);
+    //run_rma_sequenced(context, comm, pattern, fields);
 
-    run_compact(context, comm, pattern, fields);
-    run_sequence_Nco(context, comm, pattern, fields);
-    run_sequence_1co(context, comm, pattern, fields);
-    run_rma(context, comm, pattern, fields);
-    run_rma_sequenced(context, comm, pattern, fields);
+    //run_compact(context, comm, pattern, fields);
+    //run_sequence_Nco(context, comm, pattern, fields);
+    //run_sequence_1co(context, comm, pattern, fields);
+    //run_rma(context, comm, pattern, fields);
+    //run_rma_sequenced(context, comm, pattern, fields);
 
     }
 
