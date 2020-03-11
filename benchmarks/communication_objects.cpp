@@ -64,9 +64,9 @@ void run_compact(Context& context, Communicator comm, Pattern& pattern, Fields& 
         pattern(fields[5]),
         pattern(fields[6]),
         pattern(fields[7])).wait();
+    timer.tic();
     for (int i=0; i<num_repetitions; ++i)
     {
-        timer.tic();
         co.exchange(
             pattern(fields[0]),
             pattern(fields[1]),
@@ -76,15 +76,15 @@ void run_compact(Context& context, Communicator comm, Pattern& pattern, Fields& 
             pattern(fields[5]),
             pattern(fields[6]),
             pattern(fields[7])).wait();
-        timer.toc();
     }
+    timer.toc();
     if (comm.rank() == 0)
-        std::cout << "rank 0:    mean exchange time compact:                  " << timer.mean()/1000
-                  << " ± " << timer.stddev()/1000 << " ms" << std::endl;
+        std::cout << "rank 0:    mean exchange time compact:                  " << (timer.mean()/1000)/num_repetitions
+                  << " ± " << (timer.stddev()/1000)/num_repetitions << " ms" << std::endl;
     auto global_timer = ::gridtools::ghex::reduce(timer, context.mpi_comm());
     if (comm.rank() == 0)
-        std::cout << "all ranks: mean exchange time compact:                  " << global_timer.mean()/1000
-                  << " ± " << global_timer.stddev()/1000 << " ms" << std::endl;
+        std::cout << "all ranks: mean exchange time compact:                  " << (global_timer.mean()/1000)/num_repetitions
+                  << " ± " << (global_timer.stddev()/1000)/num_repetitions << " ms" << std::endl;
 }
 
 template<typename Context, typename Communicator, typename Pattern, typename Fields>
