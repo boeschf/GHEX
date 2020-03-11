@@ -34,7 +34,13 @@ using domain_descriptor_type = gridtools::ghex::structured::domain_descriptor<in
 
 using float_type = float;
 const std::array<int,3> local_dims = {64, 64, 64};
-const int halo = 5;
+const int halo = 1;
+//const std::array<int,3> local_dims = {64, 64, 64};
+//const int halo = 5;
+//const std::array<int,3> local_dims = {128, 128, 128};
+//const int halo = 1;
+//const std::array<int,3> local_dims = {128, 128, 128};
+//const int halo = 5;
 const int num_fields = 8;
 const int num_repetitions = 100;
 
@@ -237,7 +243,7 @@ void run_rma_sequenced(Context& context, Communicator comm, Pattern& pattern, Fi
 TEST(CommunicationObjects, strategies) {
     int world_size;
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    int dims[3] = {0,0,0};
+    int dims[3] = {0,0,2};
     int coords[3];
     int period[3] = {1,1,1};
     MPI_Comm CartComm;
@@ -283,13 +289,13 @@ TEST(CommunicationObjects, strategies) {
     run_sequence_Nco(context, comm, pattern, fields);
     run_sequence_1co(context, comm, pattern, fields);
     run_rma(context, comm, pattern, fields);
-    //run_rma_sequenced(context, comm, pattern, fields);
+    run_rma_sequenced(context, comm, pattern, fields);
 
-    //run_compact(context, comm, pattern, fields);
-    //run_sequence_Nco(context, comm, pattern, fields);
-    //run_sequence_1co(context, comm, pattern, fields);
-    //run_rma(context, comm, pattern, fields);
-    //run_rma_sequenced(context, comm, pattern, fields);
+    run_compact(context, comm, pattern, fields);
+    run_sequence_Nco(context, comm, pattern, fields);
+    run_sequence_1co(context, comm, pattern, fields);
+    run_rma(context, comm, pattern, fields);
+    run_rma_sequenced(context, comm, pattern, fields);
 
     }
 
