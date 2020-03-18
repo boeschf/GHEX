@@ -235,6 +235,18 @@ namespace gridtools {
                 return h; 
             }
 
+            template<typename... Archs, typename... Fields>
+            void pack_unpack(buffer_info_type<Archs,Fields>... buffer_infos) {
+                // set up buffers, tags, whatever logic is needed
+                prepare_exchange(buffer_infos...);
+                // this function posts ready futures only
+                post_recvs();
+                // packs only (no send)
+                pack();
+                // unpack
+                wait();
+            }
+
         public: // exchange a number of buffer_infos with identical type (same field, device and pattern type)
 
             /** @brief non-blocking exchange of data, vector interface
