@@ -32,7 +32,6 @@ namespace gridtools{
                     // maybe static needed to avoid unnecessary allocations
                     static thread_local std::vector<MPI_Request> reqs;
                     reqs.resize(0);
-                    reqs.reserve(count);
                     //std::vector<MPI_Request> reqs;
                     reqs.reserve(count);
                     int indx, flag;
@@ -57,8 +56,8 @@ namespace gridtools{
                     // maybe static needed to avoid unnecessary allocations
                     static thread_local std::vector<MPI_Request> reqs;
                     reqs.resize(0);
-                    reqs.reserve(count);
                     //std::vector<MPI_Request> reqs;
+                    reqs.reserve(count);
                     int indx, flag;
                     std::transform(first, last, std::back_inserter(reqs),
                         [&get](auto& x) { return get(x).m_handle.m_req.m_struct; });
