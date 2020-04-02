@@ -179,7 +179,7 @@ auto test_unidirectional_cb(Context& context) {
         auto status = comm.progress();
         EXPECT_EQ(status.num(), 0);
     } else {
-        comm.recv(rmsg, 0, 1, [ &arrived](cb_msg_type, int /*src*/, int /* tag */) { arrived = true; });
+        comm.recv(rmsg, 0, 1, [ &arrived](cb_msg_type&&, int /*src*/, int /* tag */) { arrived = true; });
 
 #ifdef GHEX_TEST_COUNT_ITERATIONS
         int c = 0;
@@ -221,11 +221,11 @@ auto test_bidirectional_cb(Context& context) {
 
     if ( rank == 0 ) {
         auto fut = comm.send(smsg, 1, 1);
-        comm.recv(rmsg, 1, 2, [ &arrived,&rmsg](cb_msg_type, int, int) { arrived = true; });
+        comm.recv(rmsg, 1, 2, [ &arrived,&rmsg](cb_msg_type&&, int, int) { arrived = true; });
         fut.wait();
     } else if (rank == 1) {
         auto fut = comm.send(smsg, 0, 2);
-        comm.recv(rmsg, 0, 1, [ &arrived,&rmsg](cb_msg_type, int, int) { arrived = true; });
+        comm.recv(rmsg, 0, 1, [ &arrived,&rmsg](cb_msg_type&&, int, int) { arrived = true; });
         fut.wait();
     }
 

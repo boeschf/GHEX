@@ -114,8 +114,8 @@ auto test_ring_send_recv_cb(CommType& comm, std::size_t buffer_size)
     volatile int sent = 0;
     for(int i=0; i<NITERS; i++){
 
-        auto send_callback = [&](communicator_type::message_type, int, int) {sent++;};
-        auto recv_callback = [&](communicator_type::message_type, int, int) {received++;};    
+        auto send_callback = [&](communicator_type::message_type&&, int, int) {sent++;};
+        auto recv_callback = [&](communicator_type::message_type&&, int, int) {received++;};    
 
         comm.recv(rmsg, rpeer_rank, 1, recv_callback);
         comm.send(smsg, speer_rank, 1, send_callback);
@@ -165,8 +165,8 @@ auto test_ring_send_recv_cb_disown(CommType& comm, std::size_t buffer_size)
     volatile int received = 0;
     volatile int sent = 0;
 
-    auto send_callback = [&](communicator_type::message_type, int, int) {sent++;};
-    auto recv_callback = [&](communicator_type::message_type mrmsg, int, int) 
+    auto send_callback = [&](communicator_type::message_type&&, int, int) {sent++;};
+    auto recv_callback = [&](communicator_type::message_type&& mrmsg, int, int) 
         {
             received++;
             int *data_ptr = reinterpret_cast<int*>(mrmsg.data());
@@ -214,7 +214,7 @@ struct recursive_functor {
     // we need a counter here so we can handle immediate callbacks
     int counter = 0;
 
-    void operator()(msg_type m, int r, int t) {
+    void operator()(msg_type&& m, int r, int t) {
         func(m,r,t);
         counter = 0;
         auto rr = comm.recv(std::move(m), rank, tag, *this);

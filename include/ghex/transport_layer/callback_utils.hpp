@@ -26,7 +26,7 @@
         "rank_type is not convertible to second callback argument type");                     \
     static_assert(std::is_same<arg2_t,TAG_TYPE>::value,                                       \
         "tag_type is not convertible to third callback argument type");                       \
-    static_assert(std::is_same<arg0_t,MESSAGE_TYPE>::value,                                   \
+    static_assert(std::is_same<arg0_t,MESSAGE_TYPE&&>::value,                                   \
         "first callback argument type is not a message_type");
 
 namespace gridtools {

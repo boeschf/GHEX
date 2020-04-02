@@ -84,7 +84,7 @@ bool test_2(Context& context, unsigned int size) {
         using tag_t = typename comm_t::tag_type;
 
         int counter = 0;
-        auto req = comm.recv(msg, 0, 42, [&counter](msg_t, rank_t, tag_t){ ++counter; });
+        auto req = comm.recv(msg, 0, 42, [&counter](msg_t&&, rank_t, tag_t){ ++counter; });
         bool ok = req.cancel();
         auto status = comm.progress();
         while (status.num_cancels() == 0) { status += comm.progress(); };

@@ -147,7 +147,7 @@ TEST(transport, send_multi_cb) {
         std::array<int, 3> dsts = {1,2,3};
 
         bool arrived = false;
-        auto req_vec = comm.send_multi(smsg, dsts, 42, [&arrived](cb_msg_type, rank_type, tag_type){ arrived=true;});
+        auto req_vec = comm.send_multi(smsg, dsts, 42, [&arrived](cb_msg_type&&, rank_type, tag_type){ arrived=true;});
 
 #ifdef GHEX_TEST_COUNT_ITERATIONS
         int c = 0;
@@ -213,7 +213,7 @@ TEST(transport, send_multi_cb_move) {
         std::array<int, 3> dsts = {1,2,3};
 
         bool arrived = false;
-        auto req_vec = comm.send_multi(std::move(smsg), dsts, 42, [&arrived](cb_msg_type, rank_type, tag_type){ arrived=true;});
+        auto req_vec = comm.send_multi(std::move(smsg), dsts, 42, [&arrived](cb_msg_type&&, rank_type, tag_type){ arrived=true;});
 
 #ifdef GHEX_TEST_COUNT_ITERATIONS
         int c = 0;

@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
             int last_sent = 0;
             int dbg = 0, sdbg = 0, rdbg = 0;
 
-            auto send_callback = [&](communicator_type::message_type, int, int tag)
+            auto send_callback = [&](communicator_type::message_type&&, int, int tag)
             {
                 int pthr = tag/inflight;
                 if(pthr != thread_id) nlsend_cnt++;
@@ -126,7 +126,7 @@ int main(int argc, char *argv[])
                 sent++;
             };
 
-            auto recv_callback = [&](communicator_type::message_type, int, int tag)
+            auto recv_callback = [&](communicator_type::message_type&&, int, int tag)
             {
                 int pthr = tag/inflight;
                 if(pthr != thread_id) nlrecv_cnt++;
@@ -270,8 +270,8 @@ int main(int argc, char *argv[])
                 context.thread_primitives().master(token,
                     [&]() mutable
                     {
-                        sf = comm.send(smsg, peer_rank, 0x80000, [](communicator_type::message_type, int, int){});
-                        rf = comm.recv(rmsg, peer_rank, 0x80000, [](communicator_type::message_type, int, int){});
+                        sf = comm.send(smsg, peer_rank, 0x80000, [](communicator_type::message_type&&, int, int){});
+                        rf = comm.recv(rmsg, peer_rank, 0x80000, [](communicator_type::message_type&&, int, int){});
                     });
 
                 while(tail_recv == 0){

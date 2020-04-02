@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
 
             int comm_cnt = 0, nlsend_cnt = 0, nlrecv_cnt = 0;
 
-            auto send_callback = [&](communicator_type::message_type, int, int tag)
+            auto send_callback = [&](communicator_type::message_type&&, int, int tag)
             {
                 // std::cout << "send callback called " << rank << " thread " << omp_get_thread_num() << " tag " << tag << "\n";
                 int pthr = tag/inflight;
@@ -124,7 +124,7 @@ int main(int argc, char *argv[])
                 sent++;
             };
 
-            auto recv_callback = [&](communicator_type::message_type, int, int tag)
+            auto recv_callback = [&](communicator_type::message_type&&, int, int tag)
             {
                 // std::cout << "recv callback called " << rank << " thread " << omp_get_thread_num() << " tag " << tag << "\n";
                 int pthr = tag/inflight;

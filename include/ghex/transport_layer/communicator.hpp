@@ -178,7 +178,7 @@ namespace gridtools {
                     auto counter = new std::atomic<int>(neighs.size());
                     for (auto id : neighs) {
                         res.push_back( send(msg, id, tag, 
-                            [callback,counter](message_type m, rank_type r, tag_type t) {
+                            [callback,counter](message_type&& m, rank_type r, tag_type t) {
                                 if ( (--(*counter)) == 0) {
                                     callback(std::move(m),r,t);
                                     delete counter;
@@ -211,7 +211,7 @@ namespace gridtools {
                     auto counter = new std::atomic<int>(neighs.size());
                     for (auto id : neighs) {
                         res.push_back( send(shared_msg, id, tag, 
-                            [callback, counter](message_type m, rank_type r, tag_type t) {
+                            [callback, counter](message_type&& m, rank_type r, tag_type t) {
                                 if ( (--(*counter)) == 0) {
                                     callback(std::move(m),r,t);
                                     delete counter;

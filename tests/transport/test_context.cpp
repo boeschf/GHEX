@@ -70,7 +70,7 @@ TEST(context, multi) {
         int counter_1 = 0;
         if (comm_1.rank() == 0) {
             for (rank_type i=1; i<comm_1.size(); ++i)
-                comm_1.send(msg_1, i, token_1.id(), [&counter_1](msg_type, rank_type, tag_type) { ++counter_1; });
+                comm_1.send(msg_1, i, token_1.id(), [&counter_1](msg_type&&, rank_type, tag_type) { ++counter_1; });
         }
         else {
             fut_1 = comm_1.recv(msg_1, 0, token_1.id());
@@ -79,7 +79,7 @@ TEST(context, multi) {
         int counter_2 = 0;
         if (comm_2.rank() == 0) {
             for (rank_type i=1; i<comm_2.size(); ++i)
-                comm_2.send(msg_2, i, token_2.id(), [&counter_2](msg_type, rank_type, tag_type) { ++counter_2; });
+                comm_2.send(msg_2, i, token_2.id(), [&counter_2](msg_type&&, rank_type, tag_type) { ++counter_2; });
         }
         else {
             fut_2 = comm_2.recv(msg_2, 0, token_2.id());
@@ -155,7 +155,7 @@ TEST(context, multi_ordered) {
         int counter_1 = 0;
         if (comm_1.rank() == 0) {
             for (rank_type i=1; i<comm_1.size(); ++i)
-                comm_1.send(msg_1, i, token_1.id(), [&counter_1](msg_type, rank_type, tag_type) { ++counter_1; });
+                comm_1.send(msg_1, i, token_1.id(), [&counter_1](msg_type&&, rank_type, tag_type) { ++counter_1; });
         }
         else {
             fut_1 = comm_1.recv(msg_1, 0, token_1.id());
@@ -164,7 +164,7 @@ TEST(context, multi_ordered) {
         int counter_2 = 0;
         if (comm_1.rank() == 0) {
             for (rank_type i=1; i<comm_1.size(); ++i)
-                comm_1.send(msg_2, i, token_1.id(), [&counter_2](msg_type, rank_type, tag_type) { ++counter_2; });
+                comm_1.send(msg_2, i, token_1.id(), [&counter_2](msg_type&&, rank_type, tag_type) { ++counter_2; });
         }
         else {
             fut_2 = comm_1.recv(msg_2, 0, token_1.id());
