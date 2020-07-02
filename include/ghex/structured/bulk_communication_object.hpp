@@ -122,6 +122,8 @@ public: // ctors
                             if (f.domain_id() == p.domain_id())
                             {
                                 auto& source_r = std::get<decltype(i)::value>(m_source_ranges_tuple);
+				// init RMA access for the field before the ranges are created
+				f.init_rma_local();
                                 // loop over elements in index container
                                 for (const auto& c : sit->second)
                                 {
