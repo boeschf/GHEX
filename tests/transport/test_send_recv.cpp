@@ -140,7 +140,6 @@ auto test_ring_send_recv_cb(CommType& comm, std::size_t buffer_size)
     if(rank==0)
     {
         std::cout << "time:       " << t/1000000 << "s\n";
-        std::cout << "************" << "\n\n\n\n\n\n";
     }
 }
 
@@ -223,7 +222,7 @@ struct recursive_functor {
     std::function<void(msg_type&, int, communicator_type::tag_type)> func;
     // we need a counter here so we can handle immediate callbacks
     int counter = 0;
-    int c2 = 0;
+
     void operator()(msg_type m, int r, communicator_type::tag_type t) {
         func(m,r,t);
         counter = 0;
@@ -236,7 +235,7 @@ struct recursive_functor {
 };
 
 template<typename Factory, typename CommType>
-auto test_ring_send_recv_cb_resubmit(CommType& comm, std::size_t buffer_size, int tag)
+auto test_ring_send_recv_cb_resubmit(CommType& comm, std::size_t buffer_size) 
 {
     using tag_type = typename CommType::tag_type;
     gridtools::ghex::timer timer;
@@ -261,15 +260,15 @@ auto test_ring_send_recv_cb_resubmit(CommType& comm, std::size_t buffer_size, in
             EXPECT_TRUE(*data_ptr == rpeer_rank);
             *data_ptr = -1;
         };
-    auto recursive_recv_callback = recursive_functor{comm,rpeer_rank,tag,rreq,recv_callback};
+    auto recursive_recv_callback = recursive_functor{comm,rpeer_rank,1,rreq,recv_callback};
 
     data_ptr = reinterpret_cast<int*>(smsg.data());
     *data_ptr = rank;
 
 
-    rreq = comm.recv(rmsg, rpeer_rank, tag, recursive_recv_callback);
+    rreq = comm.recv(rmsg, rpeer_rank, 1, recursive_recv_callback);
     for(int i=0; i<NITERS; i++){
-        comm.send(smsg, speer_rank, tag).wait();
+        comm.send(smsg, speer_rank, 1).wait();
         while(received<=i) comm.progress();
     }
 
@@ -291,14 +290,14 @@ TEST(transport, ring_send_recv_cb_resubmit)
     auto comm = context.get_communicator(token);
     using comm_type      = std::remove_reference_t<decltype(comm)>;
 
-    test_ring_send_recv_cb_resubmit< message_factory<std::vector<unsigned char>> >(comm, sizeof(int),1);
-    test_ring_send_recv_cb_resubmit< message_factory<gridtools::ghex::tl::message_buffer<allocator_type>> >(comm, sizeof(int),2);
-    test_ring_send_recv_cb_resubmit< message_factory<gridtools::ghex::tl::shared_message_buffer<allocator_type>> >(comm, sizeof(int),3);
-    test_ring_send_recv_cb_resubmit< message_factory<msg_type> >(comm, sizeof(int),4);
+    test_ring_send_recv_cb_resubmit< message_factory<std::vector<unsigned char>> >(comm, sizeof(int));
+    test_ring_send_recv_cb_resubmit< message_factory<gridtools::ghex::tl::message_buffer<allocator_type>> >(comm, sizeof(int));
+    test_ring_send_recv_cb_resubmit< message_factory<gridtools::ghex::tl::shared_message_buffer<allocator_type>> >(comm, sizeof(int));
+    test_ring_send_recv_cb_resubmit< message_factory<msg_type> >(comm, sizeof(int));
 }
 
 template<typename Factory, typename CommType>
-auto test_ring_send_recv_cb_resubmit_disown(CommType& comm, std::size_t buffer_size, int tag)
+auto test_ring_send_recv_cb_resubmit_disown(CommType& comm, std::size_t buffer_size)
 {
     using tag_type = typename CommType::tag_type;
     gridtools::ghex::timer timer;
@@ -322,15 +321,15 @@ auto test_ring_send_recv_cb_resubmit_disown(CommType& comm, std::size_t buffer_s
             EXPECT_TRUE(*data_ptr == rpeer_rank);
             *data_ptr = -1;
         };
-    auto recursive_recv_callback = recursive_functor{comm,rpeer_rank,tag,rreq,recv_callback};
+    auto recursive_recv_callback = recursive_functor{comm,rpeer_rank,1,rreq,recv_callback};
 
     data_ptr = reinterpret_cast<int*>(smsg.data());
     *data_ptr = rank;
 
 
-    rreq = comm.recv(Factory::make(buffer_size), rpeer_rank, tag, recursive_recv_callback);
+    rreq = comm.recv(Factory::make(buffer_size), rpeer_rank, 1, recursive_recv_callback);
     for(int i=0; i<NITERS; i++){
-        comm.send(smsg, speer_rank, tag).wait();
+        comm.send(smsg, speer_rank, 1).wait();
         while(received<=i) comm.progress();
     }
 
@@ -353,9 +352,9 @@ TEST(transport, ring_send_recv_cb_resubmit_disown)
     using comm_type      = std::remove_reference_t<decltype(comm)>;
     using allocator_type = typename comm_type:: template allocator_type<unsigned char>;
 
-    test_ring_send_recv_cb_resubmit_disown< message_factory<std::vector<unsigned char>> >(comm, sizeof(int),5);
-    test_ring_send_recv_cb_resubmit_disown< message_factory<gridtools::ghex::tl::message_buffer<allocator_type>> >(comm, sizeof(int),6);
-    test_ring_send_recv_cb_resubmit_disown< message_factory<gridtools::ghex::tl::shared_message_buffer<allocator_type>> >(comm, sizeof(int),7);
-    test_ring_send_recv_cb_resubmit_disown< message_factory<msg_type> >(comm, sizeof(int),8);
+    test_ring_send_recv_cb_resubmit_disown< message_factory<std::vector<unsigned char>> >(comm, sizeof(int));
+    test_ring_send_recv_cb_resubmit_disown< message_factory<gridtools::ghex::tl::message_buffer<allocator_type>> >(comm, sizeof(int));
+    test_ring_send_recv_cb_resubmit_disown< message_factory<gridtools::ghex::tl::shared_message_buffer<allocator_type>> >(comm, sizeof(int));
+    test_ring_send_recv_cb_resubmit_disown< message_factory<msg_type> >(comm, sizeof(int));
 }
 
