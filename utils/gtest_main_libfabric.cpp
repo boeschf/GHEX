@@ -1,12 +1,12 @@
-/* 
+/*
  * GridTools
- * 
+ *
  * Copyright (c) 2014-2020, ETH Zurich
  * All rights reserved.
- * 
+ *
  * Please, refer to the LICENSE file in the root directory.
  * SPDX-License-Identifier: BSD-3-Clause
- * 
+ *
  */
 #ifndef INCLUDED_GHEX_GTEST_MAIN_LIBFABRIC_CPP
 #define INCLUDED_GHEX_GTEST_MAIN_LIBFABRIC_CPP
@@ -14,7 +14,7 @@
 #include <fstream>
 #include <mpi.h>
 #include "gtest/gtest.h"
-#include <gridtools/tools/mpi_unit_test_driver/mpi_listener.hpp>
+#include "mpi_listener.hpp"
 
 #ifdef __CUDACC__
 #include <cuda_runtime.h>
