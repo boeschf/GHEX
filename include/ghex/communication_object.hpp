@@ -47,7 +47,7 @@ namespace gridtools {
             using communicator_t = typename Pattern::communicator_type;
             /** @brief future type, deduced form communicator, of type void*/
             using future_t = typename communicator_t::template future<void>;
-            /** @brief allocator type, deduced form communicator, of type void*/
+            /** @brief allocator type, deduced from communicator, of type void*/
             using allocator_t = typename communicator_t::template allocator_type<unsigned char>;
             /** @brief send buffer type, for now set to vector of bytes*/
             using s_buffer_t = tl::message_buffer<allocator_t>;

@@ -41,7 +41,6 @@ namespace gridtools {
                 using rvalue_func  =  typename std::enable_if<is_rvalue<Msg>::value, Ret>::type;
                 template<typename Msg, typename Ret = request_cb>
                 using lvalue_func  =  typename std::enable_if<!is_rvalue<Msg>::value, Ret>::type;
-
                 template<typename T>
                 using allocator_type  = typename Communicator::template allocator_type<T>;
 
