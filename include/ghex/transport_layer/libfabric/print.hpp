@@ -148,7 +148,7 @@ namespace hpx { namespace debug {
         {
         }
         void const* data_;
-        friend std::ostream& operator<<(std::ostream& os, const ptr& d)
+        friend std::ostream& operator<<(std::ostream& os, ptr const& d)
         {
             os << d.data_;
             return os;
@@ -167,11 +167,11 @@ namespace hpx { namespace debug {
         struct hex<N, T,
             typename std::enable_if<!std::is_pointer<T>::value>::type>
         {
-            hex(const T& v)
+            hex(T const& v)
               : data_(v)
             {
             }
-            const T& data_;
+            T const& data_;
             friend std::ostream& operator<<(
                 std::ostream& os, const hex<N, T>& d)
             {
@@ -185,11 +185,11 @@ namespace hpx { namespace debug {
         struct hex<N, T,
             typename std::enable_if<std::is_pointer<T>::value>::type>
         {
-            hex(const T& v)
+            hex(T const& v)
               : data_(v)
             {
             }
-            const T& data_;
+            T const& data_;
             friend std::ostream& operator<<(
                 std::ostream& os, const hex<N, T>& d)
             {
@@ -214,11 +214,11 @@ namespace hpx { namespace debug {
         template <int N = 8, typename T = int>
         struct bin
         {
-            bin(const T& v)
+            bin(T const& v)
               : data_(v)
             {
             }
-            const T& data_;
+            T const& data_;
             friend std::ostream& operator<<(
                 std::ostream& os, const bin<N, T>& d)
             {
@@ -245,7 +245,7 @@ namespace hpx { namespace debug {
         {
         }
         const char* data_;
-        friend std::ostream& operator<<(std::ostream& os, const str<N>& d)
+        friend std::ostream& operator<<(std::ostream& os, str<N> const& d)
         {
             os << std::left << std::setfill(' ') << std::setw(N) << d.data_;
             return os;
@@ -270,7 +270,7 @@ namespace hpx { namespace debug {
         const uint8_t* data_;
         const uint32_t ipdata_;
 
-        friend std::ostream& operator<<(std::ostream& os, const ipaddr& p)
+        friend std::ostream& operator<<(std::ostream& os, ipaddr const& p)
         {
             os << std::dec << int(p.data_[0]) << "." << int(p.data_[1]) << "."
                << int(p.data_[2]) << "." << int(p.data_[3]);
@@ -305,7 +305,7 @@ namespace hpx { namespace debug {
         const uint64_t* addr_;
         const std::size_t len_;
         const char* txt_;
-        friend std::ostream& operator<<(std::ostream& os, const mem_crc32& p)
+        friend std::ostream& operator<<(std::ostream& os, mem_crc32 const& p)
         {
             const uint64_t* uintBuf = static_cast<const uint64_t*>(p.addr_);
             os << "Memory:";
@@ -329,7 +329,7 @@ namespace hpx { namespace debug {
 #ifdef GHEX_HAVE_CXX17_FOLD_EXPRESSIONS
         template <typename TupleType, std::size_t... I>
         void tuple_print(
-            std::ostream& os, const TupleType& tup, std::index_sequence<I...>)
+            std::ostream& os, TupleType const& tup, std::index_sequence<I...>)
         {
             (..., (os << (I == 0 ? "" : " ") << std::get<I>(tup)));
         }
@@ -346,7 +346,7 @@ namespace hpx { namespace debug {
         template <typename TupleType, std::size_t N>
         struct tuple_printer
         {
-            static void print(std::ostream& os, const TupleType& t)
+            static void print(std::ostream& os, TupleType const& t)
             {
                 tuple_printer<TupleType, N - 1>::print(os, t);
                 os << " " << std::get<N - 1>(t);
@@ -356,7 +356,7 @@ namespace hpx { namespace debug {
         template <typename TupleType>
         struct tuple_printer<TupleType, 1>
         {
-            static void print(std::ostream& os, const TupleType& t)
+            static void print(std::ostream& os, TupleType const& t)
             {
                 os << std::get<0>(t);
             }
@@ -370,7 +370,7 @@ namespace hpx { namespace debug {
 
         template <typename Arg, typename... Args>
         void variadic_print(
-            std::ostream& os, const Arg& arg, const Args&... args)
+            std::ostream& os, Arg const& arg, Args const&... args)
         {
             os << arg;
             using expander = int[];
@@ -378,7 +378,7 @@ namespace hpx { namespace debug {
         }
 
         template <class... Args>
-        void tuple_print(std::ostream& os, const Args&... args)
+        void tuple_print(std::ostream& os, Args const&... args)
         {
             variadic_print(os, args...);
         }
@@ -397,7 +397,7 @@ namespace hpx { namespace debug {
         };
 
         inline std::ostream& operator<<(
-            std::ostream& os, const current_thread_print_helper&)
+            std::ostream& os, current_thread_print_helper const&)
         {
             os << hex<12, std::thread::id>(std::this_thread::get_id())
 #ifdef DEBUGGING_PRINT_LINUX
@@ -447,7 +447,7 @@ namespace hpx { namespace debug {
         };
 
         inline std::ostream& operator<<(
-            std::ostream& os, const hostname_print_helper& h)
+            std::ostream& os, hostname_print_helper const& h)
         {
             os << debug::str<13>(h.get_hostname()) << " ";
             return os;
@@ -461,7 +461,7 @@ namespace hpx { namespace debug {
         };
 
         inline std::ostream& operator<<(
-            std::ostream& os, const current_time_print_helper&)
+            std::ostream& os, current_time_print_helper const&)
         {
             using namespace std::chrono;
             static steady_clock::time_point log_t_start = steady_clock::now();
@@ -474,7 +474,7 @@ namespace hpx { namespace debug {
         }
 
         template <typename... Args>
-        void display(const char* prefix, const Args&... args);
+        void display(const char* prefix, Args const&... args);
 
 #ifdef GHEX_HAVE_CXX17_FOLD_EXPRESSIONS
         template <typename... Args>
@@ -492,7 +492,7 @@ namespace hpx { namespace debug {
 
 #else
         template <typename... Args>
-        void display(const char* prefix, const Args&... args)
+        void display(const char* prefix, Args const&... args)
         {
             // using a temp stream object with a single copy to cout at the end
             // prevents multiple threads from injecting overlapping text
@@ -507,37 +507,37 @@ namespace hpx { namespace debug {
 #endif
 
         template <typename... Args>
-        void debug(const Args&... args)
+        void debug(Args const&... args)
         {
             display("<DEB> ", args...);
         }
 
         template <typename... Args>
-        void warning(const Args&... args)
+        void warning(Args const&... args)
         {
             display("<WAR> ", args...);
         }
 
         template <typename... Args>
-        void error(const Args&... args)
+        void error(Args const&... args)
         {
             display("<ERR> ", args...);
         }
 
         template <typename... Args>
-        void scope(const Args&... args)
+        void scope(Args const&... args)
         {
             display("<SCO> ", args...);
         }
 
         template <typename... Args>
-        void trace(const Args&... args)
+        void trace(Args const&... args)
         {
             display("<TRC> ", args...);
         }
 
         template <typename... Args>
-        void timed(const Args&... args)
+        void timed(Args const&... args)
         {
             display("<TIM> ", args...);
         }
@@ -547,11 +547,11 @@ namespace hpx { namespace debug {
     struct init
     {
         T data_;
-        init(const T& t)
+        init(T const& t)
           : data_(t)
         {
         }
-        friend std::ostream& operator<<(std::ostream& os, const init<T>& d)
+        friend std::ostream& operator<<(std::ostream& os, init<T> const& d)
         {
             os << d.data_ << " ";
             return os;
@@ -569,10 +569,10 @@ namespace hpx { namespace debug {
     {
         // capture tuple elements by reference - no temp vars in constructor please
         const char* prefix_;
-        const std::tuple<const Args&...> message_;
+        const std::tuple<Args const&...> message_;
         std::string buffered_msg;
         //
-        scoped_var(const char* p, const Args&... args)
+        scoped_var(const char* p, Args const&... args)
           : prefix_(p)
           , message_(args...)
         {
@@ -597,14 +597,14 @@ namespace hpx { namespace debug {
         const double delay_;
         const std::tuple<Args...> message_;
         //
-        timed_var(const double& delay, const Args&... args)
+        timed_var(double const& delay, Args const&... args)
           : time_start_(std::chrono::steady_clock::now())
           , delay_(delay)
           , message_(args...)
         {
         }
 
-        bool elapsed(const std::chrono::steady_clock::time_point& now) const
+        bool elapsed(std::chrono::steady_clock::time_point const& now) const
         {
             double elapsed_ =
                 std::chrono::duration_cast<std::chrono::duration<double>>(
@@ -642,63 +642,63 @@ namespace hpx { namespace debug {
         }
 
         template <typename... Args>
-        constexpr void debug(const Args&...) const
+        constexpr void debug(Args const&...) const
         {
         }
 
         template <typename... Args>
-        constexpr void warning(const Args&...) const
+        constexpr void warning(Args const&...) const
         {
         }
 
         template <typename... Args>
-        constexpr void trace(const Args&...) const
+        constexpr void trace(Args const&...) const
         {
         }
 
         template <typename... Args>
-        constexpr void error(const Args&...) const
+        constexpr void error(Args const&...) const
         {
         }
 
         template <typename... Args>
-        constexpr void timed(const Args&...) const
+        constexpr void timed(Args const&...) const
         {
         }
 
         template <typename T>
         constexpr void array(
-            const std::string& name, const std::vector<T>&) const
+            std::string const& name, std::vector<T> const&) const
         {
         }
 
         template <typename T, std::size_t N>
         constexpr void array(
-            const std::string& name, const std::array<T, N>&) const
+            std::string const& name, const std::array<T, N>&) const
         {
         }
 
         template <typename Iter>
         constexpr void array(
-            const std::string& name, Iter begin, Iter end) const
+            std::string const& name, Iter begin, Iter end) const
         {
         }
 
         template <typename... Args>
-        constexpr bool scope(const Args&...)
+        constexpr bool scope(Args const&...)
         {
             return true;
         }
 
         template <typename T, typename... Args>
-        constexpr bool declare_variable(const Args&...) const
+        constexpr bool declare_variable(Args const&...) const
         {
             return true;
         }
 
         // @todo, return void so that timers have zero footprint when disabled
         template <typename... Args>
-        constexpr int make_timer(const double, const Args&...) const
+        constexpr int make_timer(const double, Args const&...) const
         {
             return 0;
         }
@@ -728,37 +728,37 @@ namespace hpx { namespace debug {
         }
 
         template <typename... Args>
-        constexpr void debug(const Args&... args) const
+        constexpr void debug(Args const&... args) const
         {
             detail::debug(prefix_, args...);
         }
 
         template <typename... Args>
-        constexpr void warning(const Args&... args) const
+        constexpr void warning(Args const&... args) const
         {
             detail::warning(prefix_, args...);
         }
 
         template <typename... Args>
-        constexpr void trace(const Args&... args) const
+        constexpr void trace(Args const&... args) const
         {
             detail::trace(prefix_, args...);
         }
 
         template <typename... Args>
-        constexpr void error(const Args&... args) const
+        constexpr void error(Args const&... args) const
         {
             detail::error(prefix_, args...);
         }
 
         template <typename... Args>
-        scoped_var<Args...> scope(const Args&... args)
+        scoped_var<Args...> scope(Args const&... args)
         {
             return scoped_var<Args...>(prefix_, args...);
         }
 
         template <typename... T, typename... Args>
-        void timed(const timed_var<T...>& init, const Args&... args) const
+        void timed(const timed_var<T...>& init, Args const&... args) const
         {
             auto now = std::chrono::steady_clock::now();
             if (init.elapsed(now))
@@ -768,7 +768,7 @@ namespace hpx { namespace debug {
         }
 
         template <typename T>
-        void array(const std::string& name, const std::vector<T>& v) const
+        void array(std::string const& name, std::vector<T> const& v) const
         {
             std::cout << str<20>(name.c_str()) << ": {"
                       << debug::dec<4>(v.size()) << "} : ";
@@ -778,7 +778,7 @@ namespace hpx { namespace debug {
         }
 
         template <typename T, std::size_t N>
-        void array(const std::string& name, const std::array<T, N>& v) const
+        void array(std::string const& name, const std::array<T, N>& v) const
         {
             std::cout << str<20>(name.c_str()) << ": {"
                       << debug::dec<4>(v.size()) << "} : ";
@@ -788,7 +788,7 @@ namespace hpx { namespace debug {
         }
 
         template <typename Iter>
-        void array(const std::string& name, Iter begin, Iter end) const
+        void array(std::string const& name, Iter begin, Iter end) const
         {
             std::cout << str<20>(name.c_str()) << ": {"
                       << debug::dec<4>(std::distance(begin, end)) << "} : ";
@@ -806,7 +806,7 @@ namespace hpx { namespace debug {
         }
 
         template <typename T, typename... Args>
-        T declare_variable(const Args&... args) const
+        T declare_variable(Args const&... args) const
         {
             return T(args...);
         }
