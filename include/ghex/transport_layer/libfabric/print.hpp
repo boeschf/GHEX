@@ -20,48 +20,18 @@
 //
 #include "ghex_libfabric_defines.hpp"
 //
-// -------------------------------------------------------------
-// Legacy macros that will be removed once all places
-// using them have been cleaned up
-// -------------------------------------------------------------
-#define hexbyte(p) p
-#define hexpointer(p) p
-#define hexuint32(p) p
-#define hexuint64(p) p
-#define hexlength(p) p
-#define binary8(p) p
-#define hexnumber(p) p
-#define decnumber(p) p
-#define ipaddress(p) p
-
-#define LOG_DEBUG_MSG(x)
-#define LOG_INFO_MSG(x)
-#define LOG_WARN_MSG(x)
-#define LOG_TRACE_MSG(x)
-#define LOG_FORMAT_MSG(x)
-#define LOG_DEVEL_MSG(x)
-#define LOG_TIMED_INIT(name)
-#define LOG_TIMED_MSG(name, level, delay, x)
-#define LOG_TIMED_BLOCK(name, level, delay, x)
-#define LOG_ERROR_MSG(x)                                                       \
-    std::cout << "00: <ERR> " << x << " " << __FILE__ << " " << std::dec       \
-              << __LINE__ << std::endl;
-#define LOG_FATAL_MSG(x) LOG_ERROR_MSG(x)
-
-#define LOG_EXCLUSIVE(x)
-
-#define FUNC_START_DEBUG_MSG
-#define FUNC_END_DEBUG_MSG
-// -------------------------------------------------------------
-// End legacy macros
-// -------------------------------------------------------------
-
 #if defined(__linux) || defined(linux) || defined(__linux__)
-//#include <linux/unistd.h>
-#include <unistd.h>
 #include <sys/mman.h>
-extern char **environ;
-#define DEBUGGING_PRINT_LINUX
+#include <unistd.h>
+#elif defined(__APPLE__)
+#include <crt_externs.h>
+#include <unistd.h>
+#define environ (*_NSGetEnviron())
+#elif defined(HPX_WINDOWS)
+#include <winsock2.h>
+#define environ _environ
+#else
+extern char** environ;
 #endif
 
 #undef GHEX_HAVE_CXX17_FOLD_EXPRESSIONS
@@ -73,8 +43,8 @@ extern char **environ;
 // an aid for hpx development.
 // ------------------------------------------------------------
 // Usage: Instantiate a debug print object at the top of a file
-// using a template param of true/false to enable/disable output
-// when the template parameter is false, the optimizer will
+// using a template param of true/false to enable/disable output.
+// When the template parameter is false, the optimizer will
 // not produce code and so the impact is nil.
 //
 // static hpx::debug::enable_print<true> spq_deb("SUBJECT");
@@ -98,6 +68,10 @@ extern char **environ;
 //      spq_deb.timed(getnext, dec<>(thread_num));
 // The output will only be produced every N seconds
 // ------------------------------------------------------------
+
+// Used to wrap function call parameters to prevent evaluation
+// when debugging is disabled
+#define GHEX_DP_LAZY(Expr, printer) printer.eval([&] { return Expr; })
 
 // ------------------------------------------------------------
 /// \cond NODETAIL
@@ -329,45 +303,38 @@ namespace hpx { namespace debug {
 #ifdef GHEX_HAVE_CXX17_FOLD_EXPRESSIONS
         template <typename TupleType, std::size_t... I>
         void tuple_print(
-            std::ostream& os, TupleType const& tup, std::index_sequence<I...>)
+            std::ostream& os, TupleType const& t, std::index_sequence<I...>)
         {
-            (..., (os << (I == 0 ? "" : " ") << std::get<I>(tup)));
+            (..., (os << (I == 0 ? "" : " ") << std::get<I>(t)));
         }
 
         template <typename... Args>
-        void tuple_print(std::ostream& os, const std::tuple<Args...>& tup)
+        void tuple_print(std::ostream& os, const std::tuple<Args...>& t)
         {
-            tuple_print(os, tup, std::make_index_sequence<sizeof...(Args)>());
+            tuple_print(os, t, std::make_index_sequence<sizeof...(Args)>());
         }
-
 #else
         // C++14 version
         // helper function to print a tuple of any size
-        template <typename TupleType, std::size_t N>
-        struct tuple_printer
+        template <typename TupleType, std::size_t... I>
+        void tuple_print(
+            std::ostream& os, TupleType const& t, std::index_sequence<I...>)
         {
-            static void print(std::ostream& os, TupleType const& t)
-            {
-                tuple_printer<TupleType, N - 1>::print(os, t);
-                os << " " << std::get<N - 1>(t);
-            }
-        };
-
-        template <typename TupleType>
-        struct tuple_printer<TupleType, 1>
-        {
-            static void print(std::ostream& os, TupleType const& t)
-            {
-                os << std::get<0>(t);
-            }
-        };
-
-        template <class... Args>
-        void tuple_print(std::ostream& os, const std::tuple<Args...>& t)
-        {
-            tuple_printer<decltype(t), sizeof...(Args)>::print(os, t);
+            using expander = int[];
+            (void) expander{
+                0, (void(os << (I == 0 ? "" : " ") << std::get<I>(t)), 0)...};
         }
 
+        // print a tuple of any size - forwards to helper with index
+        template <typename... Args>
+        void tuple_print(std::ostream& os, std::tuple<Args...> const& t)
+        {
+            detail::tuple_print(
+                os, t, std::make_index_sequence<sizeof...(Args)>{});
+        }
+#endif
+
+        // print variadic list of args
         template <typename Arg, typename... Args>
         void variadic_print(
             std::ostream& os, Arg const& arg, Args const&... args)
@@ -376,14 +343,6 @@ namespace hpx { namespace debug {
             using expander = int[];
             (void) expander{0, (void(os << ' ' << args), 0)...};
         }
-
-        template <class... Args>
-        void tuple_print(std::ostream& os, Args const&... args)
-        {
-            variadic_print(os, args...);
-        }
-
-#endif
 
     }    // namespace detail
 
@@ -414,10 +373,12 @@ namespace hpx { namespace debug {
         // ------------------------------------------------------------------
         struct hostname_print_helper
         {
-            const char *get_hostname() const {
+            const char* get_hostname() const
+            {
                 static bool initialized = false;
                 static char hostname_[20];
-                if (!initialized) {
+                if (!initialized)
+                {
                     initialized = true;
                     gethostname(hostname_, std::size_t(12));
                     std::string temp = "(" + std::to_string(guess_rank()) + ")";
@@ -426,23 +387,23 @@ namespace hpx { namespace debug {
                 return hostname_;
             }
 
-            int guess_rank() const {
-#ifdef DEBUGGING_PRINT_LINUX
+            int guess_rank() const
+            {
                 std::vector<std::string> env_strings{"_RANK=", "_NODEID="};
-                for(char **current = environ; *current; current++) {
+                for (char** current = environ; *current; current++)
+                {
                     auto e = std::string(*current);
-                    for (auto s : env_strings) {
+                    for (auto s : env_strings)
+                    {
                         auto pos = e.find(s);
-                        if (pos != std::string::npos) {
+                        if (pos != std::string::npos)
+                        {
                             //std::cout << "Got a rank string : " << e << std::endl;
-                            return std::stoi(e.substr(pos+s.size(), 5));
+                            return std::stoi(e.substr(pos + s.size(), 5));
                         }
                     }
                 }
                 return -1;
-#else
-                return 0;
-#endif
             }
         };
 
@@ -474,24 +435,6 @@ namespace hpx { namespace debug {
         }
 
         template <typename... Args>
-        void display(const char* prefix, Args const&... args);
-
-#ifdef GHEX_HAVE_CXX17_FOLD_EXPRESSIONS
-        template <typename... Args>
-        void display(const char* prefix, std::forward<Args>(args)... args)
-        {
-            // using a temp stream object with a single copy to cout at the end
-            // prevents multiple threads from injecting overlapping text
-            std::stringstream tempstream;
-            tempstream << prefix << detail::current_time_print_helper()
-                       << detail::current_thread_print_helper();
-            ((tempstream << args << " "), ...);
-            tempstream << std::endl;
-            std::cout << tempstream.str();
-        }
-
-#else
-        template <typename... Args>
         void display(const char* prefix, Args const&... args)
         {
             // using a temp stream object with a single copy to cout at the end
@@ -504,7 +447,6 @@ namespace hpx { namespace debug {
             tempstream << std::endl;
             std::cout << tempstream.str();
         }
-#endif
 
         template <typename... Args>
         void debug(Args const&... args)
@@ -542,27 +484,6 @@ namespace hpx { namespace debug {
             display("<TIM> ", args...);
         }
     }    // namespace detail
-
-    template <typename T>
-    struct init
-    {
-        T data_;
-        init(T const& t)
-          : data_(t)
-        {
-        }
-        friend std::ostream& operator<<(std::ostream& os, init<T> const& d)
-        {
-            os << d.data_ << " ";
-            return os;
-        }
-    };
-
-    template <typename T>
-    void set(init<T>& var, const T val)
-    {
-        var.data_ = val;
-    }
 
     template <typename... Args>
     struct scoped_var
@@ -668,19 +589,19 @@ namespace hpx { namespace debug {
 
         template <typename T>
         constexpr void array(
-            std::string const& name, std::vector<T> const&) const
+            std::string const& , std::vector<T> const&) const
         {
         }
 
         template <typename T, std::size_t N>
         constexpr void array(
-            std::string const& name, const std::array<T, N>&) const
+            std::string const& , const std::array<T, N>&) const
         {
         }
 
         template <typename Iter>
         constexpr void array(
-            std::string const& name, Iter begin, Iter end) const
+            std::string const& , Iter , Iter ) const
         {
         }
 
@@ -696,11 +617,22 @@ namespace hpx { namespace debug {
             return true;
         }
 
+        template <typename T, typename V>
+        void set(T& , V const& )
+        {
+        }
+
         // @todo, return void so that timers have zero footprint when disabled
         template <typename... Args>
         constexpr int make_timer(const double, Args const&...) const
         {
             return 0;
+        }
+
+        template <typename Expr>
+        constexpr bool eval(Expr const&)
+        {
+            return true;
         }
     };
 
@@ -799,22 +731,29 @@ namespace hpx { namespace debug {
             std::cout << std::endl;
         }
 
-        template <typename T>
-        void set(init<T>& var, const T val) const
-        {
-            var.data_ = val;
-        }
-
         template <typename T, typename... Args>
         T declare_variable(Args const&... args) const
         {
             return T(args...);
         }
 
+        template <typename T, typename V>
+        void set(T& var, V const& val)
+        {
+            var = val;
+        }
+
         template <typename... Args>
-        timed_var<Args...> make_timer(const double delay, const Args... args) const
+        timed_var<Args...> make_timer(
+            const double delay, const Args... args) const
         {
             return timed_var<Args...>(delay, args...);
+        }
+
+        template <typename Expr>
+        auto eval(Expr const& e)
+        {
+            return e();
         }
     };
 

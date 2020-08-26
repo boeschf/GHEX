@@ -99,7 +99,7 @@ namespace libfabric
         {
             [[maybe_unused]] auto scp = ghex::recv_deb.scope(__func__);
             ghex::recv_deb.debug(hpx::debug::str<>("map contents")
-                                 , memory_pool_->region_alloc_pointer_map_.debug_map());
+                                , GHEX_DP_LAZY(memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::recv_deb));
 
             // this should never actually return true and yield/sleep
             bool ok = false;
@@ -230,7 +230,7 @@ namespace libfabric
         {
             [[maybe_unused]] auto scp = ghex::recv_deb.scope(__func__);
             ghex::recv_deb.debug(hpx::debug::str<>("map contents")
-                                 , memory_pool_->region_alloc_pointer_map_.debug_map());
+                                , GHEX_DP_LAZY(memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::recv_deb));
 
             recv_deb.debug(hpx::debug::str<>("handling recv")
                 , "tag", hpx::debug::hex<16>(tag_)
@@ -250,7 +250,7 @@ namespace libfabric
                 memory_pool_->remove_address_from_map(message_region_->get_address(), message_region_);
                 memory_pool_->deallocate(message_region_);
                 ghex::recv_deb.debug(hpx::debug::str<>("map contents")
-                                     , memory_pool_->region_alloc_pointer_map_.debug_map());
+                                    , GHEX_DP_LAZY(memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::recv_deb));
             }
             message_region_ = nullptr;
 
@@ -287,7 +287,7 @@ namespace libfabric
                 memory_pool_->remove_address_from_map(message_region_->get_address(), message_region_);
                 memory_pool_->deallocate(message_region_);
                 ghex::recv_deb.debug(hpx::debug::str<>("map contents")
-                                     , memory_pool_->region_alloc_pointer_map_.debug_map());
+                                    , GHEX_DP_LAZY(memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::recv_deb));
             }
             message_region_ = nullptr;
 

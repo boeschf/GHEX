@@ -270,8 +270,8 @@ namespace gridtools {
                     [[nodiscard]] future<void> recv(Message &msg, rank_type src, tag_type tag)
                     {
                         [[maybe_unused]] auto scp = ghex::com_deb.scope(this, __func__, "(future)");
-                        ghex::com_deb.debug(hpx::debug::str<>("map contents"),
-                                            m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map());
+                        ghex::com_deb.debug(hpx::debug::str<>("map contents")
+                                            , GHEX_DP_LAZY(m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::com_deb));
 
                         std::uint64_t stag = make_tag64(tag);
 
@@ -313,7 +313,8 @@ namespace gridtools {
                     request_cb_type recv(message_type &&msg, rank_type src, tag_type tag, CallBack&& callback)
                     {
                         [[maybe_unused]] auto scp = ghex::com_deb.scope(this, __func__, "(callback)");
-                        ghex::com_deb.debug(hpx::debug::str<>("map contents"), m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map());
+                        ghex::com_deb.debug(hpx::debug::str<>("map contents")
+                                            , GHEX_DP_LAZY(m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::com_deb));
 
                         std::uint64_t stag = make_tag64(tag);
 

@@ -31,6 +31,9 @@ namespace libfabric {
 namespace rma {
 namespace detail
 {
+
+    static hpx::debug::enable_print<false> mps_deb("MBALLOC");
+
     // --------------------------------------------------------------------
     // This is a simple class that implements only malloc and free but is
     // templated over the memory region provider which is transport layer
@@ -53,15 +56,17 @@ namespace detail
         static region_ptr malloc(domain_type *pd, const std::size_t bytes)
         {
             region_ptr region = std::make_shared<region_type>();
-            LOG_TRACE_MSG("Allocating " << hexuint32(bytes) << "using chunk mallocator");
             region->allocate(pd, bytes);
+            mps_deb.trace(hpx::debug::str<>("Allocating")
+                          , hpx::debug::hex<4>(bytes)
+                          , "chunk mallocator", *region);
             return region;
         }
 
         // release a registered memory region
         static void free(region_ptr region) {
-            LOG_TRACE_MSG("Freeing a block from chunk mallocator (ref count) "
-                << region.use_count());
+            mps_deb.trace(hpx::debug::str<>("Freeing")
+                          , "chunk mallocator", *region);
             region.reset();
         }
     };

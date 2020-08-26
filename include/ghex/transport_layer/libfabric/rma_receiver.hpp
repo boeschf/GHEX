@@ -70,7 +70,8 @@ namespace libfabric
         int read_message(region_type* region, fi_addr_t const& src_addr)
         {
             [[maybe_unused]] auto scp = ghex::rma_deb.scope(this, __func__);
-            ghex::rma_deb.debug(hpx::debug::str<>("map contents"), memory_pool_->region_alloc_pointer_map_.debug_map());
+            ghex::rma_deb.debug(hpx::debug::str<>("map contents")
+                                , GHEX_DP_LAZY(m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::rma_deb));
             HPX_ASSERT(rma_count_ == 0);
             HPX_ASSERT(header_ == nullptr);
             HPX_ASSERT(header_region_ == nullptr);
@@ -114,7 +115,8 @@ namespace libfabric
         void handle_message_no_rma()
         {
             [[maybe_unused]] auto scp = ghex::rma_deb.scope(this, __func__);
-            ghex::rma_deb.debug(hpx::debug::str<>("map contents"), memory_pool_->region_alloc_pointer_map_.debug_map());
+            ghex::rma_deb.debug(hpx::debug::str<>("map contents")
+                                , GHEX_DP_LAZY(m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::rma_deb));
             HPX_ASSERT(header_);
             rma_deb.debug(DEB_PREFIX("rma_receiver")
                 , "handle piggy backed send without zero copy regions");
@@ -153,7 +155,8 @@ namespace libfabric
         void cleanup_receive()
         {
             [[maybe_unused]] auto scp = ghex::rma_deb.scope(this, __func__);
-            ghex::rma_deb.debug(hpx::debug::str<>("map contents"), memory_pool_->region_alloc_pointer_map_.debug_map());
+            ghex::rma_deb.debug(hpx::debug::str<>("map contents")
+                                , GHEX_DP_LAZY(m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::rma_deb));
             rma_deb.debug(DEB_PREFIX("rma_receiver")
                 , "cleanup for receiver rma" , hpx::debug::ptr(this));
             //

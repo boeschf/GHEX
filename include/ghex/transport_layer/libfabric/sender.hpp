@@ -64,7 +64,7 @@ namespace libfabric
         ~sender()
         {
             [[maybe_unused]] auto scp = ghex::send_deb.scope(__func__);
-        }        
+        }
 
         // --------------------------------------------------------------------
         // this takes a pinned memory region and sends it
@@ -72,7 +72,7 @@ namespace libfabric
         {
             [[maybe_unused]] auto scp = ghex::send_deb.scope(__func__);
             ghex::send_deb.debug(hpx::debug::str<>("map contents")
-                                 , memory_pool_->region_alloc_pointer_map_.debug_map());
+                                , GHEX_DP_LAZY(memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::send_deb));
 
             // increment counter of total messages sent
             ++sends_posted_;
@@ -205,7 +205,7 @@ namespace libfabric
         {
             [[maybe_unused]] auto scp = ghex::send_deb.scope(__func__);
             ghex::send_deb.debug(hpx::debug::str<>("map contents")
-                                 , memory_pool_->region_alloc_pointer_map_.debug_map());
+                                , GHEX_DP_LAZY(memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::send_deb));
 
             send_deb.debug(hpx::debug::str<>("Sender"), hpx::debug::ptr(this)
                 , "handle_send_completion"
@@ -230,7 +230,7 @@ namespace libfabric
                 memory_pool_->remove_address_from_map(message_region_->get_address(), message_region_);
                 memory_pool_->deallocate(message_region_);
                 ghex::send_deb.debug(hpx::debug::str<>("map contents")
-                                     , memory_pool_->region_alloc_pointer_map_.debug_map());
+                                    , GHEX_DP_LAZY(memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::send_deb));
             }
             message_region_ = nullptr;
 

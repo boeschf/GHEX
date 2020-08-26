@@ -22,7 +22,9 @@
 #include <string>
 
 // Define this to track which regions were not returned to the pool after use
-#if 1 || RMA_POOL_DEBUG_SET
+#define RMA_POOL_DEBUG_SET 1
+
+#if RMA_POOL_DEBUG_SET
 # include <mutex>
 # include <set>
 #endif
@@ -31,7 +33,6 @@ namespace gridtools { namespace ghex {
     // cppcheck-suppress ConfigurationNotChecked
     static hpx::debug::enable_print<false> mps_deb("MPSTACK");
 }}
-
 
 namespace gridtools {
 namespace ghex {
@@ -77,9 +78,9 @@ namespace detail
         bool allocate_pool()
         {
             mps_deb.trace(hpx::debug::str<>(PoolType::desc()), "Allocating"
-               , "ChunkSize", hexuint32(ChunkSize)
+               , "ChunkSize", hpx::debug::hex<4>(ChunkSize)
                , "num_chunks", hpx::debug::dec<>(MaxChunks)
-               , "total", hexuint32(ChunkSize*MaxChunks));
+               , "total", hpx::debug::hex<4>(ChunkSize*MaxChunks));
 
             // Allocate one very large registered block for N small blocks
             region_ptr block =
@@ -147,7 +148,7 @@ namespace detail
                , "Used", hpx::debug::dec<>(in_use_-1)
                , "Accesses", hpx::debug::dec<>(accesses_));
 
-            LOG_EXCLUSIVE(
+            if (mps_deb.is_enabled()) {
                 uintptr_t val = uintptr_t(region->get_address());
                 mps_deb.trace(hpx::debug::str<>(PoolType::desc())
                    , "Writing 0xdeadbeef to region address"
@@ -159,7 +160,7 @@ namespace detail
                         ptr[c] = 0xdeadbeef;
                     }
                 }
-            );
+            }
 
             if (!free_list_.push(region)) {
                 mps_deb.error(PoolType::desc(), "Error in memory pool push"

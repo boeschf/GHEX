@@ -1,12 +1,12 @@
-/* 
+/*
  * GridTools
- * 
+ *
  * Copyright (c) 2014-2020, ETH Zurich
  * All rights reserved.
- * 
+ *
  * Please, refer to the LICENSE file in the root directory.
  * SPDX-License-Identifier: BSD-3-Clause
- * 
+ *
  */
 #include <iostream>
 #include <iomanip>
@@ -46,7 +46,7 @@ struct message_factory<msg_type> {
 };
 
 template<typename Factory, typename CommType>
-auto test_ring_send_recv_ft(CommType& comm, std::size_t buffer_size) 
+auto test_ring_send_recv_ft(CommType& comm, std::size_t buffer_size)
 {
     gridtools::ghex::timer timer;
     int *data_ptr;
@@ -86,7 +86,6 @@ TEST(transport, ring_send_recv_ft)
     auto& context = *context_ptr;
     auto token = context.get_token();
     auto comm = context.get_communicator(token);
-    using comm_type      = std::remove_reference_t<decltype(comm)>;
 
     test_ring_send_recv_ft< message_factory<std::vector<unsigned char>> >(comm, sizeof(int));
     test_ring_send_recv_ft< message_factory<gridtools::ghex::tl::message_buffer<allocator_type>> >(comm, sizeof(int));
@@ -97,7 +96,7 @@ TEST(transport, ring_send_recv_ft)
 
 
 template<typename Factory, typename CommType>
-auto test_ring_send_recv_cb(CommType& comm, std::size_t buffer_size) 
+auto test_ring_send_recv_cb(CommType& comm, std::size_t buffer_size)
 {
     using tag_type = typename CommType::tag_type;
     gridtools::ghex::timer timer;
@@ -107,7 +106,7 @@ auto test_ring_send_recv_cb(CommType& comm, std::size_t buffer_size)
     int speer_rank = (rank+1)%size;
     int rpeer_rank = (rank-1)%size;
     if(rpeer_rank<0) rpeer_rank = size-1;
-    
+
     auto smsg = Factory::make(buffer_size);
     auto rmsg = Factory::make(buffer_size);
 
@@ -121,7 +120,7 @@ auto test_ring_send_recv_cb(CommType& comm, std::size_t buffer_size)
     for(int i=0; i<NITERS; i++){
 
         auto send_callback = [&](communicator_type::message_type, int, tag_type) {sent++;};
-        auto recv_callback = [&](communicator_type::message_type, int, tag_type) {received++;};    
+        auto recv_callback = [&](communicator_type::message_type, int, tag_type) {received++;};
 
         comm.recv(rmsg, rpeer_rank, 1, recv_callback);
         comm.send(smsg, speer_rank, 1, send_callback);
@@ -149,7 +148,6 @@ TEST(transport, ring_send_recv_cb)
     auto& context = *context_ptr;
     auto token = context.get_token();
     auto comm = context.get_communicator(token);
-    using comm_type      = std::remove_reference_t<decltype(comm)>;
 
     test_ring_send_recv_cb< message_factory<std::vector<unsigned char>> >(comm, sizeof(int));
     test_ring_send_recv_cb< message_factory<gridtools::ghex::tl::message_buffer<allocator_type>> >(comm, sizeof(int));
@@ -158,7 +156,7 @@ TEST(transport, ring_send_recv_cb)
 }
 
 template<typename Factory, typename CommType>
-auto test_ring_send_recv_cb_disown(CommType& comm, std::size_t buffer_size) 
+auto test_ring_send_recv_cb_disown(CommType& comm, std::size_t buffer_size)
 {
     using tag_type = typename CommType::tag_type;
     gridtools::ghex::timer timer;
@@ -174,7 +172,7 @@ auto test_ring_send_recv_cb_disown(CommType& comm, std::size_t buffer_size)
     volatile int sent = 0;
 
     auto send_callback = [&](communicator_type::message_type, int, tag_type) {sent++;};
-    auto recv_callback = [&](communicator_type::message_type mrmsg, int, tag_type) 
+    auto recv_callback = [&](communicator_type::message_type mrmsg, int, tag_type)
         {
             received++;
             int *data_ptr = reinterpret_cast<int*>(mrmsg.data());
@@ -206,7 +204,6 @@ TEST(transport, ring_send_recv_cb_disown)
     auto& context = *context_ptr;
     auto token = context.get_token();
     auto comm = context.get_communicator(token);
-    using comm_type      = std::remove_reference_t<decltype(comm)>;
 
     test_ring_send_recv_cb_disown< message_factory<std::vector<unsigned char>> >(comm, sizeof(int));
     test_ring_send_recv_cb_disown< message_factory<gridtools::ghex::tl::message_buffer<allocator_type>> >(comm, sizeof(int));
@@ -235,7 +232,7 @@ struct recursive_functor {
 };
 
 template<typename Factory, typename CommType>
-auto test_ring_send_recv_cb_resubmit(CommType& comm, std::size_t buffer_size) 
+auto test_ring_send_recv_cb_resubmit(CommType& comm, std::size_t buffer_size)
 {
     using tag_type = typename CommType::tag_type;
     gridtools::ghex::timer timer;
@@ -244,12 +241,12 @@ auto test_ring_send_recv_cb_resubmit(CommType& comm, std::size_t buffer_size)
     int size = comm.size();
     int speer_rank = (rank+1)%size;
     int rpeer_rank = (rank+size-1)%size;
-    
+
     auto smsg = Factory::make(buffer_size);
     auto rmsg = Factory::make(buffer_size);
 
     comm.barrier();
-    timer.tic();    
+    timer.tic();
     volatile int received = 0;
 
     typename communicator_type::request_cb rreq;
@@ -288,7 +285,6 @@ TEST(transport, ring_send_recv_cb_resubmit)
     auto& context = *context_ptr;
     auto token = context.get_token();
     auto comm = context.get_communicator(token);
-    using comm_type      = std::remove_reference_t<decltype(comm)>;
 
     test_ring_send_recv_cb_resubmit< message_factory<std::vector<unsigned char>> >(comm, sizeof(int));
     test_ring_send_recv_cb_resubmit< message_factory<gridtools::ghex::tl::message_buffer<allocator_type>> >(comm, sizeof(int));
@@ -306,11 +302,11 @@ auto test_ring_send_recv_cb_resubmit_disown(CommType& comm, std::size_t buffer_s
     int size = comm.size();
     int speer_rank = (rank+1)%size;
     int rpeer_rank = (rank+size-1)%size;
-    
+
     auto smsg = Factory::make(buffer_size);
 
     comm.barrier();
-    timer.tic(); 
+    timer.tic();
     volatile int received = 0;
 
     typename communicator_type::request_cb rreq;
