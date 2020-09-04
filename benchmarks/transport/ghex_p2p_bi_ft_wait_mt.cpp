@@ -41,6 +41,9 @@ using transport    = ghex::tl::libfabric_tag;
 using transport    = ghex::tl::mpi_tag;
 #endif
 
+const char *syncmode = "future";
+const char *waitmode = "wait";
+
 #include <ghex/transport_layer/message_buffer.hpp>
 using context_type = ghex::tl::context<transport, threading>;
 using communicator_type = typename context_type::communicator_type;
@@ -169,9 +172,19 @@ int main(int argc, char *argv[])
 
             comm.barrier();
             if(thread_id == 0 && rank == 0){
-                const auto t = ttimer.toc();
+                const auto t = ttimer.stoc();
+                double bw = ((double)niter*size*buff_size)/t;
                 std::cout << "time:       " << t/1000000 << "s\n";
-                std::cout << "final MB/s: " << ((double)niter*size*buff_size)/t << "\n";
+                std::cout << "final MB/s: " << bw << "\n";
+                std::cout << "CSVData"
+                          << ", niter, "        << niter
+                          << ", buff_size, "    << buff_size
+                          << ", inflight, "     << inflight
+                          << ", num_threads, "  << num_threads
+                          << ", transport, "    << ghex::tl::tag_to_string(transport{})
+                          << ", syncmode, "     << syncmode
+                          << ", waitmode, "     << waitmode
+                          << ", BW MB/s, "      << bw << "\n";
             }
         }
 
