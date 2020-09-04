@@ -73,7 +73,7 @@
 #endif
 
 #define GHEX_LIBFABRIC_FI_VERSION_MAJOR 1
-#define GHEX_LIBFABRIC_FI_VERSION_MINOR 9
+#define GHEX_LIBFABRIC_FI_VERSION_MINOR 11
 
 namespace gridtools { namespace ghex {
     // cppcheck-suppress ConfigurationNotChecked
@@ -214,6 +214,7 @@ namespace libfabric
             // initialize rma allocator with a pool
             ghex::tl::libfabric::rma::memory_region_allocator<unsigned char> allocator{};
             allocator.init_memory_pool(memory_pool_.get());
+            libfabric_region_holder::memory_pool_ = memory_pool_.get();
 
             initialize_localities();
 
@@ -416,7 +417,7 @@ namespace libfabric
                 FI_WRITE | FI_READ | FI_REMOTE_READ | FI_REMOTE_WRITE | FI_RMA_EVENT |
                 FI_DIRECTED_RECV | FI_TAGGED;
 
-            fabric_hints_->mode                   = FI_CONTEXT | FI_LOCAL_MR;
+            fabric_hints_->mode                   = FI_CONTEXT /*| FI_MR_LOCAL*/;
             fabric_hints_->fabric_attr->prov_name = strdup(provider.c_str());
             cnt_deb.debug(hpx::debug::str<>("fabric provider")
                 , fabric_hints_->fabric_attr->prov_name);
@@ -428,6 +429,7 @@ namespace libfabric
 
             // use infiniband type basic registration for now
             fabric_hints_->domain_attr->mr_mode = FI_MR_BASIC;
+//            fabric_hints_->domain_attr->mr_mode = FI_MR_SCALABLE;
 
             // Disable the use of progress threads
             fabric_hints_->domain_attr->control_progress = FI_PROGRESS_MANUAL;
@@ -449,7 +451,10 @@ namespace libfabric
             fabric_hints_->rx_attr->op_flags = FI_COMPLETION;
 
             uint64_t flags = 0;
-            cnt_deb.debug(hpx::debug::str<>("get fabric info"), "FI_VERSION", GHEX_LIBFABRIC_FI_VERSION_MAJOR, GHEX_LIBFABRIC_FI_VERSION_MINOR);
+            cnt_deb.debug(hpx::debug::str<>("get fabric info")
+                          , "FI_VERSION"
+                          , hpx::debug::dec(GHEX_LIBFABRIC_FI_VERSION_MAJOR)
+                          , hpx::debug::dec(GHEX_LIBFABRIC_FI_VERSION_MINOR));
             int ret = fi_getinfo(FI_VERSION(GHEX_LIBFABRIC_FI_VERSION_MAJOR, GHEX_LIBFABRIC_FI_VERSION_MINOR),
                 nullptr, nullptr, flags, fabric_hints_, &fabric_info_);
             if (ret) {
@@ -466,6 +471,10 @@ namespace libfabric
             bool context = (fabric_hints_->mode & FI_CONTEXT)!=0;
             cnt_deb.debug(hpx::debug::str<>("Requires FI_CONTEXT")
                 , context);
+
+            bool mrlocal = (fabric_hints_->mode & FI_MR_LOCAL)!=0;
+            cnt_deb.debug(hpx::debug::str<>("Requires FI_MR_LOCAL")
+                , mrlocal);
 
             cnt_deb.debug(hpx::debug::str<>("Creating fi_fabric"));
             ret = fi_fabric(fabric_info_->fabric_attr, &fabric_, nullptr);
@@ -591,7 +600,8 @@ namespace libfabric
                             , hpx::debug::dec<>(senders_in_use_));
                     }
                     else {
-                        throw std::runtime_error("get_sender : address vector traversal failure");
+                        throw std::runtime_error(
+                            "get_sender : address vector traversal lookup failure");
                     }
                 }
 
@@ -934,18 +944,10 @@ namespace libfabric
                     sender* handler = reinterpret_cast<sender*>(entry.op_context);
                     processed.user_msgs += handler->handle_send_completion();
                 }
-                else if (entry.flags & FI_RMA) {
-                    cnt_deb.debug(hpx::debug::str<>("Completion")
-                        , "txcq RMA"
-                        , "context" , hpx::debug::ptr(entry.op_context));
-//                    rma_receiver* rcv = reinterpret_cast<rma_receiver*>(entry.op_context);
-//                    if (rcv->handle_rma_read_completion()) {
-//                        // the user receive callback was triggered
-//                        processed.user_msgs += 1;
-//                        // poll again to ensure any ACKs are pushed through
-//                        processed += poll_send_queue();
-//                    }
-                }
+
+                // RMA support removed
+                // else if (entry.flags & FI_RMA) {}
+
                 else if (entry.flags == (FI_MSG | FI_SEND)) {
                     cnt_deb.debug(hpx::debug::str<>("Completion")
                         , "txcq MSG send completion");

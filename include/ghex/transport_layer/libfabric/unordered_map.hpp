@@ -356,6 +356,7 @@ namespace concurrent {
             if (!lock.owns_lock()) return "already locked";
             // do not call this->size() because it takes a lock
             // and we do not support a recursive shared rw lock
+            // get the size directly from the underlying map
             std::stringstream temp;
             int index = 0;
             temp << this << " Map size is " << map_.size() << "\n";

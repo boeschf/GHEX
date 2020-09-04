@@ -25,7 +25,10 @@ namespace gridtools {
         static hpx::debug::enable_print<false> com_deb("COMMUNI");
 
         namespace tl {
-            namespace libfabric {
+            namespace libfabric {            
+
+                using region_provider    = libfabric_region_provider;
+                using region_type        = rma::detail::memory_region_impl<region_provider>;
 
                 struct status_t {};
 
@@ -90,7 +93,7 @@ namespace gridtools {
                 {
                     using shared_state_type = shared_communicator_state<ThreadPrimitives>;
                     using state_type        = communicator_state<ThreadPrimitives>;
-                    using message_type      = ::gridtools::ghex::tl::cb::any_message;
+                    using any_message_type  = ::gridtools::ghex::tl::libfabric::any_libfabric_message;
                     using tag_type          = typename shared_state_type::tag_type;
                     using rank_type         = int;
                     template <typename T>
@@ -125,12 +128,18 @@ namespace gridtools {
                     using rank_type              = int;
                     using tag_type               = typename shared_state_type::tag_type;
                     using request                = request_t;
+
                     template<typename T> using future = future_t<T>;
                     template<typename T> using allocator_type  = ghex::tl::libfabric::rma::memory_region_allocator<T>;
+                    using lf_allocator_type  = allocator_type<unsigned char>;
 
-                    using address_type    = rank_type;
-                    using request_cb_type = request_cb<ThreadPrimitives>;
-                    using message_type    = typename request_cb_type::message_type;
+                    using address_type              = rank_type;
+                    using request_cb_type           = request_cb<ThreadPrimitives>;
+                    using message_type              = typename request_cb_type::any_message_type;
+                    using any_message_type          = typename request_cb_type::any_message_type;
+                    using libfabric_msg_type        = message_buffer<lf_allocator_type>;
+                    using libfabric_sharedmsg_type  = shared_message_buffer<lf_allocator_type>;
+
                     using progress_status = ghex::tl::cb::progress_status;
 
                   private: // members
@@ -190,8 +199,10 @@ namespace gridtools {
                             , "addr", hpx::debug::ptr(msg.data())
                             , "size", hpx::debug::hex<6>(msg.size()));
 
+                        sndr->init_message_data(msg, stag);
+
                         // async send, with callback to set the future ready when transfer is complete
-                        sndr->send_tagged_msg(msg, stag, [p=req.m_lf_ctxt]() {
+                        sndr->send_tagged_msg([p=req.m_lf_ctxt]() {
                             p->m_ready = true;
                             ghex::com_deb.debug(hpx::debug::str<>("Send (future)"), "F(set)");
                         });
@@ -204,14 +215,14 @@ namespace gridtools {
                       * The ownership of the message is transferred to this communicator and it is safe to destroy the
                       * message at the caller's site.
                       * Note, that the communicator has to be progressed explicitely in order to guarantee completion.
-                      * @tparam CallBack a callback type with the signature void(message_type, rank_type, tag_type)
+                      * @tparam CallBack a callback type with the signature void(any_message, rank_type, tag_type)
                       * @param msg r-value reference to any_message instance
                       * @param dst the destination rank
                       * @param tag the communication tag
                       * @param callback a callback instance
                       * @return a request to test (but not wait) for completion */
                     template<typename CallBack>
-                    request_cb_type send(message_type&& msg, rank_type dst, tag_type tag, CallBack&& callback)
+                    request_cb_type send(any_message_type&& msg, rank_type dst, tag_type tag, CallBack&& callback)
                     {
                         [[maybe_unused]] auto scp = ghex::com_deb.scope(this, __func__, "(callback)");
 
@@ -237,13 +248,13 @@ namespace gridtools {
                          , "size", hpx::debug::hex<6>(msg.size()));
 
                         // so that we can move the message int the callback,
-                        // we first init the message sender
-                        auto temp_msg_data = sndr->init_message_data(msg, stag);
+                        // first extract any rma info we need
+                        sndr->init_message_data(msg, stag);
 
                         // now move message into callback
                         auto lambda = [
                              p        = req.m_lf_ctxt,
-                             msg      = std::forward<message_type>(msg),
+                             msg      = std::move(msg),
                              callback = std::forward<CallBack>(callback),
                              dst, tag
                              ]() mutable
@@ -255,7 +266,7 @@ namespace gridtools {
                         };
 
                         // perform a send with the callback for when transfer is complete
-                        sndr->send_tagged_msg(temp_msg_data, std::move(lambda));
+                        sndr->send_tagged_msg(std::move(lambda));
                         return req;
                     }
 
@@ -300,17 +311,76 @@ namespace gridtools {
                             , "addr", hpx::debug::ptr(msg.data())
                             , "size", hpx::debug::hex<6>(msg.size()));
 
+                        rcv->init_message_data(msg, stag);
+
                         auto lambda = [p=req.m_lf_ctxt](){
                             p->m_ready = true;
                             ghex::com_deb.debug(hpx::debug::str<>("Recv (future)"), "F(set)");
                         };
 
-                        rcv->receive_tagged_msg(msg, stag, std::move(lambda));
+                        rcv->receive_tagged_msg(std::move(lambda));
                         return req;
                     }
 
+//                    template<typename Msg, typename CallBack>
+//                    request_cb_type recv(Msg &&msg, rank_type src, tag_type tag, CallBack&& callback)
+//                    {
+//                        [[maybe_unused]] auto scp = ghex::com_deb.scope(this, __func__, "(callback)");
+//                        ghex::com_deb.debug(hpx::debug::str<>("map contents")
+//                                            , GHEX_DP_LAZY(m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::com_deb));
+
+//                        std::uint64_t stag = make_tag64(tag);
+
+//                        // main libfabric controller
+//                        auto controller = m_shared_state->m_controller;
+
+//                        // create a request
+//                        std::shared_ptr<context_info> result(new context_info{false, nullptr});
+//                        request req{controller, request_kind::recv, std::move(result)};
+
+//                        // get a receiver object (tagged, with a callback)
+//                        ghex::tl::libfabric::receiver *rcv =
+//                                controller->get_expected_receiver(src);
+
+//                        // to support cancellation, we pass the context pointer (receiver)
+//                        // into the future shared state
+//                        req.m_lf_ctxt->m_lf_context = rcv;
+
+//                        ghex::com_deb.debug(hpx::debug::str<>("Recv (callback)")
+//                            , "thisrank", hpx::debug::dec<>(rank())
+//                            , "rank", hpx::debug::dec<>(src)
+//                            , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
+//                            , "cxt", hpx::debug::hex<8>(m_shared_state->m_context)
+//                            , "stag", hpx::debug::hex<16>(stag)
+//                            , "recv", hpx::debug::ptr(rcv)
+//                            , "addr", hpx::debug::ptr(msg.data())
+//                            , "size", hpx::debug::hex<6>(msg.size()));
+
+//                        // so that we can move the message int the callback,
+//                        // first extract any rma info we need
+//                        rcv->init_message_data(msg, stag);
+
+//                        // now move message into callback
+//                        auto lambda = [
+//                             p        = req.m_lf_ctxt,
+//                             msg      = std::forward<Msg>(msg),
+//                             callback = std::forward<CallBack>(callback),
+//                             src, tag
+//                             ]() mutable
+//                        {
+//                            p->m_ready = true;
+//                            ghex::com_deb.debug(hpx::debug::str<>("Recv (callback)")
+//                                 , "F(set)", hpx::debug::dec<>(src));
+//                            callback(std::move(msg), src, tag);
+//                        };
+
+//                        // perform a send with the callback for when transfer is complete
+//                        rcv->receive_tagged_msg(std::move(lambda));
+//                        return req;
+//                    }
+
                     template<typename CallBack>
-                    request_cb_type recv(message_type &&msg, rank_type src, tag_type tag, CallBack&& callback)
+                    request_cb_type recv(any_libfabric_message &&msg, rank_type src, tag_type tag, CallBack&& callback)
                     {
                         [[maybe_unused]] auto scp = ghex::com_deb.scope(this, __func__, "(callback)");
                         ghex::com_deb.debug(hpx::debug::str<>("map contents")
@@ -343,14 +413,14 @@ namespace gridtools {
                             , "addr", hpx::debug::ptr(msg.data())
                             , "size", hpx::debug::hex<6>(msg.size()));
 
-                        // so that we can move the message into the callback,
-                        // we first init the message sender
-                        auto temp_msg_data = rcv->init_message_data(msg, stag);
+                        // so that we can move the message int the callback,
+                        // first extract any rma info we need
+                        rcv->init_message_data(msg, stag);
 
                         // now move message into callback
                         auto lambda = [
                              p        = req.m_lf_ctxt,
-                             msg      = std::forward<message_type>(msg),
+                             msg      = std::move(msg), // std::forward<Msg>(msg)
                              callback = std::forward<CallBack>(callback),
                              src, tag
                              ]() mutable
@@ -362,9 +432,15 @@ namespace gridtools {
                         };
 
                         // perform a send with the callback for when transfer is complete
-                        rcv->receive_tagged_msg(temp_msg_data, std::move(lambda));
+                        rcv->receive_tagged_msg(std::move(lambda));
                         return req;
                     }
+
+//                    template<typename CallBack>
+//                    request_cb_type recv(libfabric_sharedmsg_type &shared_msg, rank_type src, tag_type tag, CallBack&& callback)
+//                    {
+//                        return recv(shared_msg.get(), src, tag, std::forward<CallBack>(callback));
+//                    }
 
                     /** @brief Function to poll the transport layer and check for completion of operations with an
                       * associated callback. When an operation completes, the corresponfing call-back is invoked

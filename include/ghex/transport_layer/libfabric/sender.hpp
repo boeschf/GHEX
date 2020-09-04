@@ -15,7 +15,6 @@
 #include <ghex/transport_layer/libfabric/controller.hpp>
 #include <ghex/transport_layer/libfabric/rma_base.hpp>
 
-#include <ghex/transport_layer/libfabric/locality.hpp>
 #include <ghex/transport_layer/libfabric/print.hpp>
 #include <ghex/transport_layer/callback_utils.hpp>
 #include <ghex/transport_layer/message_buffer.hpp>
@@ -40,7 +39,7 @@ namespace libfabric
         using region_type        = rma::detail::memory_region_impl<region_provider>;
         using memory_pool_type   = rma::memory_pool<region_provider>;
         using libfabric_msg_type = message_buffer<rma::memory_region_allocator<unsigned char>>;
-        using any_msg_type       = gridtools::ghex::tl::cb::any_message;
+        using any_msg_type       = gridtools::ghex::tl::libfabric::any_libfabric_message;
 
         // --------------------------------------------------------------------
         sender(controller* cnt, fid_ep* endpoint, fid_domain* domain,
@@ -52,8 +51,6 @@ namespace libfabric
           , memory_pool_(memory_pool)
           , dst_addr_(-1)
           , message_region_(nullptr)
-          , message_region_temp_(false)
-          , message_region_mapped_(false)
           , tag_(uint64_t(-1))
           , sends_posted_(0)
           , sends_deleted_(0)
@@ -108,95 +105,27 @@ namespace libfabric
         }
 
         // --------------------------------------------------------------------
-        // Take raw data and send it.
-        // The data might not be pinned already, if not, pin it temporarily
-        void send_tagged_data(const void *data,
-                        std::size_t size)
-        {
-            [[maybe_unused]] auto scp = ghex::send_deb.scope(__func__);
-
-            // did someone register this memory block and store it in the memory pool map
-            message_region_ = dynamic_cast<region_type*>(
-                        memory_pool_->region_from_address(data));
-
-            // if the memory was not pinned, register it now
-            message_region_temp_ = false;
-            if (message_region_ == nullptr) {
-                message_region_temp_ = true;
-                message_region_ = memory_pool_->register_temporary_region(data, size);
-                memory_pool_->add_address_to_map(data, message_region_);
-                ghex::send_deb.debug(hpx::debug::str<>("region is temp"), message_region_);
-            }
-
-            // Set the used size correctly
-            message_region_->set_message_length(size);
-            send_tagged_region(message_region_);
-        }
-
-        // utility struct to hold raw data info
-        struct msg_data_default {
-            const void *data;
-            std::size_t size;
-        };
-
-        // utility struct to hold libfabric enabled info
-        struct msg_data_libfabric {
-            region_type *message_region_;
-        };
-
-        // solve move/callback issues by extracting what we need from the message
-        // in this function, before calling the main send function after the
-        // message has been moved into the callback
-        auto init_message_data(const any_msg_type &msg, uint64_t tag)
-        {
-            tag_     = tag;
-            return msg_data_default{msg.data(), msg.size()};
-        }
-
-        auto init_message_data(const libfabric_msg_type &msg, uint64_t tag)
+        void init_message_data(const any_libfabric_message &msg, uint64_t tag)
         {
             tag_                 = tag;
-            message_region_temp_ = false;
-            message_region_      = msg.get_buffer().m_pointer.region_;
+            message_region_      = msg.m_holder.m_region;
             message_region_->set_message_length(msg.size());
-            return msg_data_libfabric{message_region_};
         }
 
-        // generic message sender (reference to message)
-        template<typename Message, typename Callback>
-        void send_tagged_msg(const Message &msg,
-                             uint64_t tag,
-                             Callback &&cb_fn)
+        template <typename Message>
+        void init_message_data(Message &msg, uint64_t tag)
         {
-            tag_     = tag;
-            user_cb_ = std::move(cb_fn);
-            send_tagged_data(msg.data(), msg.size());
-        }
-
-        template<typename Callback>
-        void send_tagged_msg(libfabric_msg_type &msg,
-                             uint64_t tag,
-                             Callback &&cb_fn)
-        {
-            init_message_data(msg, tag);
-            user_cb_ = std::move(cb_fn);
-            send_tagged_region(message_region_);
-        }
-
-        // generic message sender (move message into callback)
-        template<typename Callback>
-        void send_tagged_msg(const msg_data_default &md, Callback &&cb_fn)
-        {
-            user_cb_ = std::forward<Callback>(cb_fn);
-            send_tagged_data(md.data, md.size);
+            tag_                 = tag;
+            message_holder_.set_rma_from_pointer(msg.data(), msg.size());
+            message_region_ = message_holder_.m_region;
         }
 
         // libfabric message customization (known memory region)
         template<typename Callback>
-        void send_tagged_msg(const msg_data_libfabric &md, Callback &&cb_fn)
+        void send_tagged_msg(Callback &&cb_fn)
         {
             user_cb_ = std::forward<Callback>(cb_fn);
-            send_tagged_region(md.message_region_);
+            send_tagged_region(message_region_);
         }
 
         // --------------------------------------------------------------------
@@ -221,17 +150,8 @@ namespace libfabric
             // (in case it holds reference counts that must be released)
             user_cb_ = [](){};
 
-            // cleanup temp region
-            if (message_region_temp_) {
-                send_deb.debug(hpx::debug::str<>("Sender")
-                               , hpx::debug::ptr(this)
-                               , "disposing of temp region");
-                ghex::send_deb.debug(hpx::debug::str<>("free temp region "), message_region_);
-                memory_pool_->remove_address_from_map(message_region_->get_address(), message_region_);
-                memory_pool_->deallocate(message_region_);
-                ghex::send_deb.debug(hpx::debug::str<>("map contents")
-                                    , GHEX_DP_LAZY(memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::send_deb));
-            }
+            // cleanup temp region if necessary
+            message_holder_.clear();
             message_region_ = nullptr;
 
             // return the sender to the available list
@@ -259,9 +179,8 @@ namespace libfabric
         fid_domain                  *domain_;
         memory_pool_type            *memory_pool_;
         fi_addr_t                    dst_addr_;
+        libfabric_region_holder      message_holder_;
         region_type                 *message_region_;
-        bool                         message_region_temp_;
-        bool                         message_region_mapped_;
         uint64_t                     tag_;
         unique_function<void(void)>  user_cb_;
         std::function<void(sender*)> postprocess_handler_;

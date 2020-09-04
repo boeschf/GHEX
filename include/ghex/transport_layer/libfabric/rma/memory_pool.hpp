@@ -304,6 +304,7 @@ namespace rma
 
         void add_address_to_map(void const * addr, region_type* region)
         {
+//            throw(std::runtime_error("Don't use this for benchmarks"));
             pool_deb.trace(hpx::debug::str<>("Expensive")
                 , "add_address_to_map"
                 , hpx::debug::ptr(addr), *region);
@@ -313,6 +314,8 @@ namespace rma
 
         void remove_address_from_map(void const * addr, memory_region* region)
         {
+            pool_deb.trace(hpx::debug::str<>("map contents")
+                                , GHEX_DP_LAZY(region_alloc_pointer_map_.debug_map(), pool_deb));
             pool_deb.trace(hpx::debug::str<>("Expensive")
                 , "remove_address_from_map"
                 , hpx::debug::ptr(addr), *region);
