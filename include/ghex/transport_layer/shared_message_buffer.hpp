@@ -82,6 +82,8 @@ namespace gridtools {
                 shared_message_buffer& operator=(const shared_message_buffer&) = default;
                 shared_message_buffer& operator=(shared_message_buffer&&) = default;
             
+                message_type &get() { return *m_message.get(); }
+
             public: // member functions
     
                 bool is_shared() const { return use_count() > 1; }
