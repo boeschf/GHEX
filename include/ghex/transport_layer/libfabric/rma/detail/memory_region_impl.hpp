@@ -68,9 +68,9 @@ namespace detail
                 0, (uint64_t)address_, 0, &(region_), nullptr);
 
             if (ret) {
-                memr_deb.debug(
+                GHEX_DP_LAZY(memr_deb, memr_deb.debug(
                     hpx::debug::str<>("error registering")
-                    , hpx::debug::ptr(buffer) , hpx::debug::hex<6>(length));
+                    , hpx::debug::ptr(buffer) , hpx::debug::hex<6>(length)));
             }
             else {
                 memr_deb.trace(
@@ -103,9 +103,9 @@ namespace detail
                 0, (uint64_t)address_, 0, &(region_), nullptr);
 
             if (ret) {
-                memr_deb.debug(
+                GHEX_DP_LAZY(memr_deb, memr_deb.debug(
                     hpx::debug::str<>("error registering")
-                    , hpx::debug::ptr(buffer) , hpx::debug::hex<6>(length));
+                    , hpx::debug::ptr(buffer) , hpx::debug::hex<6>(length)));
             }
             else {
                 memr_deb.trace(
@@ -145,7 +145,7 @@ namespace detail
                 if (traits::rma_memory_region_traits<RegionProvider>::
                     unregister_memory(region_))
                 {
-                    memr_deb.debug("Error, fi_close mr failed\n");
+                    GHEX_DP_LAZY(memr_deb, memr_deb.debug("Error, fi_close mr failed\n"));
                     return -1;
                 }
                 else {

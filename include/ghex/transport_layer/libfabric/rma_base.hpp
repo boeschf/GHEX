@@ -66,8 +66,8 @@ namespace libfabric
 
         // empty holder
         libfabric_region_holder() {
-//            m_region     = nullptr;
-//            m_unregister = false;
+            m_region     = nullptr;
+            m_unregister = false;
         }
 
         // reference an existing region, don't wipe on exit
@@ -110,7 +110,7 @@ namespace libfabric
 
         void clear()
         {
-            if (m_unregister) unregister();
+            if (m_unregister && m_region) unregister();
             m_unregister = false;
             m_region     = nullptr;
         }
@@ -129,7 +129,6 @@ namespace libfabric
             // did someone register this memory block and store it in the memory pool map
             m_region = dynamic_cast<region_type*>(
                         memory_pool_->region_from_address(ptr));
-assert(ptr!=nullptr);
             // if the memory was not pinned, register it now
             // and mark the regions as needing to be unregistered on delete
             m_unregister = false;
@@ -137,13 +136,13 @@ assert(ptr!=nullptr);
                 m_unregister = true;
                 m_region = memory_pool_->register_temporary_region(ptr, size);
                 memory_pool_->add_address_to_map(ptr, m_region);
-                ghex::any_deb.debug(hpx::debug::str<>("register"), *m_region);
+                GHEX_DP_LAZY(any_deb, any_deb.debug(hpx::debug::str<>("register"), *m_region));
             }
             m_region->set_message_length(size);
         }
 
         void unregister() {
-            ghex::any_deb.debug(hpx::debug::str<>("unregister"), *m_region);
+            GHEX_DP_LAZY(any_deb, any_deb.debug(hpx::debug::str<>("unregister"), *m_region));
             memory_pool_->remove_address_from_map(m_region->get_address(), m_region);
             memory_pool_->deallocate(m_region);
         }
@@ -177,7 +176,7 @@ assert(ptr!=nullptr);
           * @tparam Message a message type
           * @param m a message */
         template<class Message>
-        any_libfabric_message(Message&& m)
+        explicit any_libfabric_message(Message&& m)
         : m_data{reinterpret_cast<unsigned char*>(m.data())}
         , m_size{m.size()*sizeof(typename Message::value_type)}
         , m_holder{}
@@ -192,7 +191,7 @@ assert(ptr!=nullptr);
           * @tparam T a message type
           * @param m a ref_message to a message. */
         template<typename T>
-        any_libfabric_message(cb::ref_message<T>&& m)
+        explicit any_libfabric_message(cb::ref_message<T>&& m)
         : m_data{reinterpret_cast<unsigned char*>(m.data())}
         , m_size{m.size()*sizeof(T)}
         , m_holder{}
@@ -206,7 +205,7 @@ assert(ptr!=nullptr);
           * @tparam Message a message type
           * @param sm a shared pointer to a message*/
         template<typename Message>
-        any_libfabric_message(std::shared_ptr<Message>& sm)
+        explicit any_libfabric_message(std::shared_ptr<Message>& sm)
         : m_data{reinterpret_cast<unsigned char*>(sm->data())}
         , m_size{sm->size()*sizeof(typename Message::value_type)}
         , m_ptr2(sm,reinterpret_cast<char*>(sm.get()))

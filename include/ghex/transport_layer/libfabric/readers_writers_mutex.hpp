@@ -145,12 +145,12 @@ namespace local {
             rwl_barrier_();
             uint16_t val = atomic_xadd(&ticket.s.next, 1);
 
-            RWL_deb.debug(hpx::debug::str<>("lock wr")
+            GHEX_DP_LAZY(RWL_deb, RWL_deb.debug(hpx::debug::str<>("lock wr")
                           , hpx::debug::ptr(this)
                           , "r" , hpx::debug::dec<4>(ticket.s.readers)
                           , "w" , hpx::debug::dec<4>(ticket.s.writers)
                           , "n" , hpx::debug::dec<4>(ticket.s.next)
-                          , "v" , hpx::debug::dec<4>(val));
+                          , "v" , hpx::debug::dec<4>(val)));
 
             while (val != ticket.s.writers) {
                 std::this_thread::sleep_for(std::chrono::microseconds(1));
@@ -169,11 +169,11 @@ namespace local {
             // readlock incremented readers when it took the lock
             if (readlock_) {
                 atomic_inc(&ticket.s.writers);
-                RWL_deb.debug(hpx::debug::str<>("unlock rd")
+                GHEX_DP_LAZY(RWL_deb, RWL_deb.debug(hpx::debug::str<>("unlock rd")
                               , hpx::debug::ptr(this)
                               , "r" , hpx::debug::dec<4>(ticket.s.readers)
                               , "w" , hpx::debug::dec<4>(ticket.s.writers)
-                              , "n" , hpx::debug::dec<4>(ticket.s.next));
+                              , "n" , hpx::debug::dec<4>(ticket.s.next)));
             }
             else {
                 // only one writer can enter unlock at a time,
@@ -181,11 +181,11 @@ namespace local {
                 readwrite_ticket new_ticket = ticket;
                 ++new_ticket.s.writers;
                 ++new_ticket.s.readers;
-                RWL_deb.debug(hpx::debug::str<>("unlock wr")
+                GHEX_DP_LAZY(RWL_deb, RWL_deb.debug(hpx::debug::str<>("unlock wr")
                               , hpx::debug::ptr(this)
                               , "r" , hpx::debug::dec<4>(ticket.s.readers)
                               , "w" , hpx::debug::dec<4>(ticket.s.writers)
-                              , "n" , hpx::debug::dec<4>(ticket.s.next));
+                              , "n" , hpx::debug::dec<4>(ticket.s.next)));
 
                 // this copy operation must be atomic for the full 32bits
                 ticket.i.wr = new_ticket.i.wr;
@@ -197,11 +197,11 @@ namespace local {
         //
         bool try_lock()
         {
-            RWL_deb.debug(hpx::debug::str<>("try  wr")
+            GHEX_DP_LAZY(RWL_deb, RWL_deb.debug(hpx::debug::str<>("try  wr")
                           , hpx::debug::ptr(this)
                           , "r" , hpx::debug::dec<4>(ticket.s.readers)
                           , "w" , hpx::debug::dec<4>(ticket.s.writers)
-                          , "n" , hpx::debug::dec<4>(ticket.s.next));
+                          , "n" , hpx::debug::dec<4>(ticket.s.next)));
 
             readwrite_ticket new_ticket, old_ticket;
             new_ticket = old_ticket = ticket;
@@ -236,12 +236,12 @@ namespace local {
             rwl_barrier_();
             uint16_t val = atomic_xadd(&ticket.s.next, 1);
 
-            RWL_deb.debug(hpx::debug::str<>("lock rd")
+            GHEX_DP_LAZY(RWL_deb, RWL_deb.debug(hpx::debug::str<>("lock rd")
                           , hpx::debug::ptr(this)
                           , "r" , hpx::debug::dec<4>(ticket.s.readers)
                           , "w" , hpx::debug::dec<4>(ticket.s.writers)
                           , "n" , hpx::debug::dec<4>(ticket.s.next)
-                          , "v" , hpx::debug::dec<4>(val));
+                          , "v" , hpx::debug::dec<4>(val)));
 
             while (val != ticket.s.readers) {
                 std::this_thread::sleep_for(std::chrono::microseconds(1));
@@ -268,11 +268,11 @@ namespace local {
         //
         bool try_lock_shared()
         {
-            RWL_deb.debug(hpx::debug::str<>("try  rd")
+            GHEX_DP_LAZY(RWL_deb, RWL_deb.debug(hpx::debug::str<>("try  rd")
                           , hpx::debug::ptr(this)
                           , "r" , hpx::debug::dec<4>(ticket.s.readers)
                           , "w" , hpx::debug::dec<4>(ticket.s.writers)
-                          , "n" , hpx::debug::dec<4>(ticket.s.next));
+                          , "n" , hpx::debug::dec<4>(ticket.s.next)));
 
             readwrite_ticket new_ticket, old_ticket;
             new_ticket = old_ticket = ticket;

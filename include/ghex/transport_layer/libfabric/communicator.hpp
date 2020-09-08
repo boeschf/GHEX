@@ -1,4 +1,4 @@
-/* 
+/*
  * GridTools
  * 
  * Copyright (c) 2014-2020, ETH Zurich
@@ -176,7 +176,7 @@ namespace gridtools {
                     template<typename Message>
                     [[nodiscard]] future<void> send(const Message& msg, rank_type dst, tag_type tag)
                     {
-                        [[maybe_unused]] auto scp = ghex::com_deb.scope(this, __func__, "(future)");
+                        [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(future)");
 
                         std::uint64_t stag = make_tag64(tag);
 
@@ -189,7 +189,7 @@ namespace gridtools {
                         std::shared_ptr<context_info> result(new context_info{false, nullptr});
                         request req{controller, request_kind::recv, std::move(result)};
 
-                        ghex::com_deb.debug(hpx::debug::str<>("Send (future)")
+                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send (future)")
                             , "thisrank", hpx::debug::dec<>(rank())
                             , "rank", hpx::debug::dec<>(dst)
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
@@ -197,14 +197,14 @@ namespace gridtools {
                             , "stag", hpx::debug::hex<16>(stag)
                             , "sndr", hpx::debug::ptr(sndr)
                             , "addr", hpx::debug::ptr(msg.data())
-                            , "size", hpx::debug::hex<6>(msg.size()));
+                            , "size", hpx::debug::hex<6>(msg.size())));
 
                         sndr->init_message_data(msg, stag);
 
                         // async send, with callback to set the future ready when transfer is complete
                         sndr->send_tagged_msg([p=req.m_lf_ctxt]() {
                             p->m_ready = true;
-                            ghex::com_deb.debug(hpx::debug::str<>("Send (future)"), "F(set)");
+                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send (future)"), "F(set)"));
                         });
 
                         // future constructor will be called with request as param
@@ -224,7 +224,7 @@ namespace gridtools {
                     template<typename CallBack>
                     request_cb_type send(any_message_type&& msg, rank_type dst, tag_type tag, CallBack&& callback)
                     {
-                        [[maybe_unused]] auto scp = ghex::com_deb.scope(this, __func__, "(callback)");
+                        [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(callback)");
 
                         std::uint64_t stag = make_tag64(tag);
 
@@ -237,7 +237,7 @@ namespace gridtools {
                         std::shared_ptr<context_info> result(new context_info{false, nullptr});
                         request req{controller, request_kind::recv, std::move(result)};
 
-                        ghex::com_deb.debug(hpx::debug::str<>("Send (callback)")
+                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send (callback)")
                          , "thisrank", hpx::debug::dec<>(rank())
                          , "rank", hpx::debug::dec<>(dst)
                          , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
@@ -245,7 +245,7 @@ namespace gridtools {
                          , "stag", hpx::debug::hex<16>(stag)
                          , "sndr", hpx::debug::ptr(sndr)
                          , "addr", hpx::debug::ptr(msg.data())
-                         , "size", hpx::debug::hex<6>(msg.size()));
+                         , "size", hpx::debug::hex<6>(msg.size())));
 
                         // so that we can move the message int the callback,
                         // first extract any rma info we need
@@ -260,8 +260,8 @@ namespace gridtools {
                              ]() mutable
                         {
                             p->m_ready = true;
-                            ghex::com_deb.debug(hpx::debug::str<>("Send (callback)")
-                                 , "F(set)", hpx::debug::dec<>(dst));
+                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send (callback)")
+                                 , "F(set)", hpx::debug::dec<>(dst)));
                             callback(std::move(msg), dst, tag);
                         };
 
@@ -280,9 +280,9 @@ namespace gridtools {
                     template<typename Message>
                     [[nodiscard]] future<void> recv(Message &msg, rank_type src, tag_type tag)
                     {
-                        [[maybe_unused]] auto scp = ghex::com_deb.scope(this, __func__, "(future)");
-                        ghex::com_deb.debug(hpx::debug::str<>("map contents")
-                                            , GHEX_DP_LAZY(m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::com_deb));
+                        [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(future)");
+                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("map contents")
+                                            , m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map()));
 
                         std::uint64_t stag = make_tag64(tag);
 
@@ -301,7 +301,7 @@ namespace gridtools {
                         // into the future shared state
                         req.m_lf_ctxt->m_lf_context = rcv;
 
-                        ghex::com_deb.debug(hpx::debug::str<>("Recv (future)")
+                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (future)")
                             , "thisrank", hpx::debug::dec<>(rank())
                             , "rank", hpx::debug::dec<>(src)
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
@@ -309,13 +309,13 @@ namespace gridtools {
                             , "stag", hpx::debug::hex<16>(stag)
                             , "recv", hpx::debug::ptr(rcv)
                             , "addr", hpx::debug::ptr(msg.data())
-                            , "size", hpx::debug::hex<6>(msg.size()));
+                            , "size", hpx::debug::hex<6>(msg.size())));
 
                         rcv->init_message_data(msg, stag);
 
                         auto lambda = [p=req.m_lf_ctxt](){
                             p->m_ready = true;
-                            ghex::com_deb.debug(hpx::debug::str<>("Recv (future)"), "F(set)");
+                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (future)"), "F(set)"));
                         };
 
                         rcv->receive_tagged_msg(std::move(lambda));
@@ -325,9 +325,9 @@ namespace gridtools {
 //                    template<typename Msg, typename CallBack>
 //                    request_cb_type recv(Msg &&msg, rank_type src, tag_type tag, CallBack&& callback)
 //                    {
-//                        [[maybe_unused]] auto scp = ghex::com_deb.scope(this, __func__, "(callback)");
-//                        ghex::com_deb.debug(hpx::debug::str<>("map contents")
-//                                            , GHEX_DP_LAZY(m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::com_deb));
+//                        [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(callback)");
+//                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("map contents")
+//                                            , GHEX_DP_LAZY(m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map(), com_deb));
 
 //                        std::uint64_t stag = make_tag64(tag);
 
@@ -346,7 +346,7 @@ namespace gridtools {
 //                        // into the future shared state
 //                        req.m_lf_ctxt->m_lf_context = rcv;
 
-//                        ghex::com_deb.debug(hpx::debug::str<>("Recv (callback)")
+//                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (callback)")
 //                            , "thisrank", hpx::debug::dec<>(rank())
 //                            , "rank", hpx::debug::dec<>(src)
 //                            , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
@@ -369,7 +369,7 @@ namespace gridtools {
 //                             ]() mutable
 //                        {
 //                            p->m_ready = true;
-//                            ghex::com_deb.debug(hpx::debug::str<>("Recv (callback)")
+//                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (callback)")
 //                                 , "F(set)", hpx::debug::dec<>(src));
 //                            callback(std::move(msg), src, tag);
 //                        };
@@ -382,9 +382,9 @@ namespace gridtools {
                     template<typename CallBack>
                     request_cb_type recv(any_libfabric_message &&msg, rank_type src, tag_type tag, CallBack&& callback)
                     {
-                        [[maybe_unused]] auto scp = ghex::com_deb.scope(this, __func__, "(callback)");
-                        ghex::com_deb.debug(hpx::debug::str<>("map contents")
-                                            , GHEX_DP_LAZY(m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::com_deb));
+                        [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(callback)");
+                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("map contents")
+                                            , m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map()));
 
                         std::uint64_t stag = make_tag64(tag);
 
@@ -403,7 +403,7 @@ namespace gridtools {
                         // into the future shared state
                         req.m_lf_ctxt->m_lf_context = rcv;
 
-                        ghex::com_deb.debug(hpx::debug::str<>("Recv (callback)")
+                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (callback)")
                             , "thisrank", hpx::debug::dec<>(rank())
                             , "rank", hpx::debug::dec<>(src)
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
@@ -411,7 +411,7 @@ namespace gridtools {
                             , "stag", hpx::debug::hex<16>(stag)
                             , "recv", hpx::debug::ptr(rcv)
                             , "addr", hpx::debug::ptr(msg.data())
-                            , "size", hpx::debug::hex<6>(msg.size()));
+                            , "size", hpx::debug::hex<6>(msg.size())));
 
                         // so that we can move the message int the callback,
                         // first extract any rma info we need
@@ -426,8 +426,8 @@ namespace gridtools {
                              ]() mutable
                         {
                             p->m_ready = true;
-                            ghex::com_deb.debug(hpx::debug::str<>("Recv (callback)")
-                                 , "F(set)", hpx::debug::dec<>(src));
+                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (callback)")
+                                 , "F(set)", hpx::debug::dec<>(src)));
                             callback(std::move(msg), src, tag);
                         };
 

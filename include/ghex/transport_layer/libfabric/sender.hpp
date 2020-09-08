@@ -68,13 +68,13 @@ namespace libfabric
         void send_tagged_region(region_type *send_region)
         {
             [[maybe_unused]] auto scp = ghex::send_deb.scope(__func__);
-            ghex::send_deb.debug(hpx::debug::str<>("map contents")
-                                , GHEX_DP_LAZY(memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::send_deb));
+            GHEX_DP_LAZY(send_deb, send_deb.debug(hpx::debug::str<>("map contents")
+                                , memory_pool_->region_alloc_pointer_map_.debug_map()));
 
             // increment counter of total messages sent
             ++sends_posted_;
 
-            send_deb.debug(hpx::debug::str<>("message buffer"), *send_region);
+            GHEX_DP_LAZY(send_deb, send_deb.debug(hpx::debug::str<>("message buffer"), *send_region));
 
             bool ok = false;
             while (!ok) {
@@ -105,7 +105,21 @@ namespace libfabric
         }
 
         // --------------------------------------------------------------------
+        void init_message_data(const libfabric_msg_type &msg, uint64_t tag)
+        {
+            tag_                 = tag;
+            message_region_      = msg.get_buffer().m_pointer.region_;
+            message_region_->set_message_length(msg.size());
+        }
+
         void init_message_data(const any_libfabric_message &msg, uint64_t tag)
+        {
+            tag_                 = tag;
+            message_region_      = msg.m_holder.m_region;
+            message_region_->set_message_length(msg.size());
+        }
+
+        void init_message_data(any_libfabric_message &msg, uint64_t tag)
         {
             tag_                 = tag;
             message_region_      = msg.m_holder.m_region;
@@ -116,6 +130,7 @@ namespace libfabric
         void init_message_data(Message &msg, uint64_t tag)
         {
             tag_                 = tag;
+            throw(std::runtime_error("Why"));
             message_holder_.set_rma_from_pointer(msg.data(), msg.size());
             message_region_ = message_holder_.m_region;
         }
@@ -133,12 +148,12 @@ namespace libfabric
         int handle_send_completion()
         {
             [[maybe_unused]] auto scp = ghex::send_deb.scope(__func__);
-            ghex::send_deb.debug(hpx::debug::str<>("map contents")
-                                , GHEX_DP_LAZY(memory_pool_->region_alloc_pointer_map_.debug_map(), ghex::send_deb));
+            GHEX_DP_LAZY(send_deb, send_deb.debug(hpx::debug::str<>("map contents")
+                                , memory_pool_->region_alloc_pointer_map_.debug_map()));
 
-            send_deb.debug(hpx::debug::str<>("Sender"), hpx::debug::ptr(this)
+            GHEX_DP_LAZY(send_deb, send_deb.debug(hpx::debug::str<>("Sender"), hpx::debug::ptr(this)
                 , "handle_send_completion"
-                , "tag", hpx::debug::hex<16>(tag_));
+                , "tag", hpx::debug::hex<16>(tag_)));
 
             // track deletions
             ++sends_deleted_;
@@ -155,9 +170,9 @@ namespace libfabric
             message_region_ = nullptr;
 
             // return the sender to the available list
-            send_deb.debug(hpx::debug::str<>("Sender")
+            GHEX_DP_LAZY(send_deb, send_deb.debug(hpx::debug::str<>("Sender")
                            , hpx::debug::ptr(this)
-                           , "calling postprocess_handler");
+                           , "calling postprocess_handler"));
             postprocess_handler_(this);
 
             return 1;
