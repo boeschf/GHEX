@@ -119,18 +119,10 @@ namespace libfabric
             message_region_->set_message_length(msg.size());
         }
 
-        void init_message_data(any_libfabric_message &msg, uint64_t tag)
-        {
-            tag_                 = tag;
-            message_region_      = msg.m_holder.m_region;
-            message_region_->set_message_length(msg.size());
-        }
-
-        template <typename Message>
+        template <typename Message, typename Enable = typename std::enable_if<!std::is_same<libfabric_msg_type, Message>::value>::type>
         void init_message_data(Message &msg, uint64_t tag)
         {
             tag_                 = tag;
-            throw(std::runtime_error("Why"));
             message_holder_.set_rma_from_pointer(msg.data(), msg.size());
             message_region_ = message_holder_.m_region;
         }

@@ -139,9 +139,7 @@ namespace libfabric
             message_region_->set_message_length(msg.size());
         }
 
-        template <typename Message,
-            typename = typename std::enable_if<!std::is_same<libfabric_msg_type, Message>::value>::type
-                  >
+        template <typename Message, typename Enable = typename std::enable_if<!std::is_same<libfabric_msg_type, Message>::value>::type>
         void init_message_data(Message &msg, uint64_t tag)
         {
             tag_                 = tag;
