@@ -60,7 +60,7 @@ namespace gridtools {
                   * @return type erased message buffer */
                 template<typename Allocator>
                 static message_type make_message(std::size_t bytes, Allocator alloc) {
-                    return message_buffer<Allocator>(bytes, alloc);
+                    return message_type(message_buffer<Allocator>(bytes, alloc));
                 }
                 
                 /** @brief generate a message buffer with a fixed size from a default constructed allocator
