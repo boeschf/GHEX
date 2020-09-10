@@ -42,7 +42,7 @@ struct message_factory {
 
 template<>
 struct message_factory<msg_type> {
-    static msg_type make(std::size_t size) { return {std::vector<unsigned char>(size)}; }
+    static msg_type make(std::size_t size) { return msg_type{std::vector<unsigned char>(size)}; }
 };
 
 template<typename Factory, typename CommType>
