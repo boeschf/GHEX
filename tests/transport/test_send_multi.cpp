@@ -202,7 +202,7 @@ TEST(transport, send_multi_cb_move) {
     rank = context.rank();
 
     using comm_type      = std::remove_reference_t<decltype(comm)>;
-    using allocator_type = comm_type::allocator_type<unsigned char>;
+    using allocator_type = typename comm_type::template allocator_type<unsigned char>;
     //using smsg_type      = gridtools::ghex::tl::message_buffer<allocator_type>;
     using smsg_type      = gridtools::ghex::tl::shared_message_buffer<allocator_type>;
     using cb_msg_type    = comm_type::message_type;

@@ -212,9 +212,9 @@ auto test_bidirectional_cb(Context& context) {
 
     auto comm = context.get_communicator(token);
 
-    using allocator_type  = std::allocator<unsigned char>;
-    using smsg_type       = gridtools::ghex::tl::shared_message_buffer<allocator_type>;
     using comm_type       = std::remove_reference_t<decltype(comm)>;
+    using allocator_type = typename comm_type::template allocator_type<unsigned char>;
+    using smsg_type       = gridtools::ghex::tl::shared_message_buffer<allocator_type>;
     using cb_msg_type     = typename comm_type::message_type;
     using tag_type        = typename comm_type::tag_type;
 
