@@ -1,0 +1,4 @@
+export UGNI_DEBUG=10
+export FI_LOG_LEVEL=debug
+export FI_LOG_PROV=gni
+
