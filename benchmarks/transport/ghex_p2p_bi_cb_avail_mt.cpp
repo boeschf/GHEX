@@ -236,9 +236,9 @@ int main(int argc, char *argv[])
                           << ", buff_size, "    << buff_size
                           << ", inflight, "     << inflight
                           << ", num_threads, "  << num_threads
-                          << ", transport, "    << ghex::tl::tag_to_string(transport{})
                           << ", syncmode, "     << syncmode
                           << ", waitmode, "     << waitmode
+                          << ", transport, "    << ghex::tl::tag_to_string(transport{})
                           << ", BW MB/s, "      << bw << "\n";
             }
 

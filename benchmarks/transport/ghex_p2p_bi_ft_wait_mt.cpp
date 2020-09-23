@@ -172,7 +172,7 @@ int main(int argc, char *argv[])
 
             comm.barrier();
             if(thread_id == 0 && rank == 0){
-                const auto t = ttimer.stoc();
+                const auto t = ttimer.toc();
                 double bw = ((double)niter*size*buff_size)/t;
                 std::cout << "time:       " << t/1000000 << "s\n";
                 std::cout << "final MB/s: " << bw << "\n";
@@ -181,9 +181,9 @@ int main(int argc, char *argv[])
                           << ", buff_size, "    << buff_size
                           << ", inflight, "     << inflight
                           << ", num_threads, "  << num_threads
-                          << ", transport, "    << ghex::tl::tag_to_string(transport{})
                           << ", syncmode, "     << syncmode
                           << ", waitmode, "     << waitmode
+                          << ", transport, "    << ghex::tl::tag_to_string(transport{})
                           << ", BW MB/s, "      << bw << "\n";
             }
         }
