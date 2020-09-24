@@ -127,24 +127,27 @@ namespace libfabric
         // --------------------------------------------------------------------
         void init_message_data(const libfabric_msg_type &msg, uint64_t tag)
         {
-            tag_                 = tag;
-            message_region_      = msg.get_buffer().m_pointer.region_;
+            tag_            = tag;
+            message_region_ = msg.get_buffer().m_pointer.region_;
             message_region_->set_message_length(msg.size());
         }
 
         void init_message_data(const any_libfabric_message &msg, uint64_t tag)
         {
-            tag_                 = tag;
-            message_region_      = msg.m_holder.m_region;
+            tag_            = tag;
+            message_region_ = msg.region();
             message_region_->set_message_length(msg.size());
         }
 
-        template <typename Message, typename Enable = typename std::enable_if<!std::is_same<libfabric_msg_type, Message>::value>::type>
+        template <typename Message,
+                  typename Enable = typename std::enable_if<
+                      !std::is_same<libfabric_msg_type, Message>::value &&
+                      !std::is_same<any_libfabric_message, Message>::value>::type>
         void init_message_data(Message &msg, uint64_t tag)
         {
-            tag_                 = tag;
             message_holder_.set_rma_from_pointer(msg.data(), msg.size());
             message_region_ = message_holder_.m_region;
+            tag_            = tag;
         }
 
         // libfabric message customization (known memory region)
@@ -186,7 +189,7 @@ namespace libfabric
         }
 
         // --------------------------------------------------------------------
-        int handle_recv_completion(fi_addr_t const& /*src_addr*/, std::uint64_t /*len*/)
+        int handle_recv_completion(std::uint64_t /*len*/)
         {
             [[maybe_unused]] auto scp = recv_deb.scope(__func__);
 //            GHEX_DP_LAZY(recv_deb, recv_deb.debug(hpx::debug::str<>("map contents")

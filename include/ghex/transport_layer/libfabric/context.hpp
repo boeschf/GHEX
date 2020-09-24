@@ -27,13 +27,13 @@ namespace gridtools {
         struct transport_context<libfabric_tag, ThreadPrimitives>
         {
             using thread_primitives_type = ThreadPrimitives;
-            using communicator_type = communicator<libfabric::communicator<thread_primitives_type>>;
-            using thread_token = typename thread_primitives_type::token;
-            using shared_state_type = typename communicator_type::shared_state_type;
-            using state_type = typename communicator_type::state_type;
-            using state_ptr = std::unique_ptr<state_type>;
-            using state_vector = std::vector<state_ptr>;
-            using controller_type = ghex::tl::libfabric::controller;
+            using communicator_type      = communicator<libfabric::communicator<thread_primitives_type>>;
+            using thread_token           = typename thread_primitives_type::token;
+            using shared_state_type      = typename communicator_type::shared_state_type;
+            using state_type             = typename communicator_type::state_type;
+            using state_ptr              = std::unique_ptr<state_type>;
+            using state_vector           = std::vector<state_ptr>;
+            using controller_type        = ghex::tl::libfabric::controller;
 
             thread_primitives_type   &m_thread_primitives;
             MPI_Comm                  m_comm;
@@ -73,7 +73,7 @@ namespace gridtools {
               , m_states(tp.size())
               , m_tokens(tp.size())
               , m_shared_state{m_controller, this, &tp}
-              , m_state{nullptr}
+              , m_state{nullptr, m_controller->ep_active_, m_controller->fabric_domain_}
             {
                 const int tag_value = 65535;
                 if (m_rank==0) {
@@ -98,7 +98,7 @@ namespace gridtools {
                 if (!m_states[t.id()])
                 {
                     m_tokens[t.id()] = t;
-                    m_states[t.id()] = std::make_unique<state_type>(&m_tokens[t.id()]);
+                    m_states[t.id()] = std::make_unique<state_type>(&m_tokens[t.id()], m_controller->ep_active_, m_controller->fabric_domain_);
                 }
                 return {&m_shared_state, m_states[t.id()].get()};
             }

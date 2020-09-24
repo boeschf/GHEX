@@ -77,7 +77,7 @@
 
 namespace gridtools { namespace ghex {
     // cppcheck-suppress ConfigurationNotChecked
-    static hpx::debug::enable_print<false> cnt_deb("CONTROL");
+    static hpx::debug::enable_print<true> cnt_deb("CONTROL");
 }}
 
 namespace gridtools {
@@ -128,24 +128,10 @@ namespace libfabric
         bool                       immediate_;
         std::atomic<std::uint32_t> bootstrap_counter_;
 
-        // We maintain a list of senders that are being used
-        using sender_list =
-            boost::lockfree::stack<
-                sender*,
-                boost::lockfree::capacity<GHEX_LIBFABRIC_MAX_SENDS>,
-                boost::lockfree::fixed_sized<false>
-            >;
-        sender_list senders_;
-        std::atomic<unsigned int> senders_in_use_;
-
         // We must maintain a list of receivers that are being used
-        using expected_receiver_stack =
-            boost::lockfree::stack<
-                receiver*,
-                boost::lockfree::capacity<GHEX_LIBFABRIC_MAX_EXPECTED>,
-                boost::lockfree::fixed_sized<false>
-            >;
-        expected_receiver_stack expected_receivers_;
+        using expected_receiver_stack = std::stack<receiver*>;
+
+        static expected_receiver_stack thread_local expected_receivers_;
         std::atomic<unsigned int> expected_receivers_in_use_;
 
         locality here_;
@@ -159,8 +145,10 @@ namespace libfabric
         // Pinned memory pool used for allocating buffers
         std::unique_ptr<rma::memory_pool<libfabric_region_provider>> memory_pool_;
 
-        // only allow one thread to handle connect/disconnect events etc
-        mutex_type            initialization_mutex_;
+        // used during queue creation setup and during polling
+        mutex_type   controller_mutex_;
+        mutex_type   send_mutex_;
+        mutex_type   recv_mutex_;
 
         // --------------------------------------------------------------------
         // constructor gets info from device and sets up all necessary
@@ -227,14 +215,6 @@ namespace libfabric
             unsigned int messages_handled_ = 0;
             unsigned int rma_reads_        = 0;
             unsigned int recv_deletes_     = 0;
-
-            // clear senders list
-            bool ok = true;
-            sender* snd = nullptr;
-            while (ok) {
-                ok = senders_.pop(snd);
-                if (ok) delete snd;
-            }
 
             GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("counters")
                 , "Received messages" , hpx::debug::dec<>(messages_handled_)
@@ -397,7 +377,7 @@ namespace libfabric
             }
 #endif
             //
-            fabric_hints_->caps        = FI_MSG | FI_RMA | FI_SOURCE | /*FI_SOURCE_ERR |*/
+            fabric_hints_->caps        = FI_MSG | FI_RMA /*| FI_SOURCE*/ | /*FI_SOURCE_ERR |*/
                 FI_WRITE | FI_READ | FI_REMOTE_READ | FI_REMOTE_WRITE | FI_RMA_EVENT |
                 FI_DIRECTED_RECV | FI_TAGGED;
 
@@ -471,8 +451,17 @@ namespace libfabric
             ret = fi_domain(fabric_, fabric_info_, &fabric_domain_, nullptr);
             if (ret) throw fabric_error(ret, "fi_domain");
 
-            // Cray specific. Disable memory registration cache
-            _set_disable_registration();
+//            // Enable use of udreg instead of internal MR cache
+//            ret = _set_check_domain_op_value(GNI_MR_CACHE, "udreg");
+
+//            // Experiments showed default value of 2048 too high if
+//            // launching multiple clients on one node
+//            int32_t udreg_limit = 1024;
+//            ret = gni_set_domain_op_value(
+//                fabric_domain_, GNI_MR_UDREG_REG_LIMIT, &udreg_limit);
+
+        // Cray specific. Disable memory registration cache completely
+        _set_disable_registration();
 
             fi_freeinfo(fabric_hints_);
         }
@@ -489,12 +478,7 @@ namespace libfabric
             bind_endpoint_to_queues(ep_active_);
 #endif
 
-            for (std::size_t i = 0; i < GHEX_LIBFABRIC_MAX_SENDS; ++i)
-            {
-                add_sender_to_pool();
-            }
-
-            for (std::size_t i = 0; i < GHEX_LIBFABRIC_MAX_EXPECTED; ++i)
+            for (std::size_t i = 0; i < 0; ++i)
             {
                 receiver *rcv = new_expected_receiver();
                 // put the new receiver on the free list
@@ -508,90 +492,18 @@ namespace libfabric
             // is called, this returns it to the free list when possible
             auto handler = [this](receiver* rcv)
                 {
-                    --expected_receivers_in_use_;
+//                    --expected_receivers_in_use_;
                     GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("recycle")
                                   , "expected_receiver"
                                   , hpx::debug::ptr(rcv)
-                                  , hpx::debug::dec<>(expected_receivers_in_use_)));
-                    // if stack full, just delete
-                    if (!expected_receivers_.push(rcv)) {
-                        delete rcv;
-                    }
+                                  /*, hpx::debug::dec<>(expected_receivers_in_use_)*/));
+                    expected_receivers_.push(rcv);
                 };
             //
             receiver *rcv = new receiver(ep_active_, *memory_pool_, std::move(handler));
             return rcv;
         }
 
-        // --------------------------------------------------------------------
-        // return a sender object
-        // --------------------------------------------------------------------
-        void add_sender_to_pool() {
-            sender *snd =
-               new sender(this,
-                    ep_active_,
-                    get_domain(),
-                    memory_pool_.get());
-            // after a sender has been used, it's postprocess handler
-            // is called, this returns it to the free list
-            snd->postprocess_handler_ = [this](sender* s)
-                {
-                    --senders_in_use_;
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("senders in use")
-                                  , "(-- stack sender)"
-                                  , hpx::debug::ptr(s)
-                                  , hpx::debug::dec<>(senders_in_use_)));
-                    senders_.push(s);
-                    // trigger_pending_work();
-                };
-            // put the new sender on the free list
-            senders_.push(snd);
-        }
-
-        // --------------------------------------------------------------------
-        // return a sender object
-        // --------------------------------------------------------------------
-        sender* get_sender(int rank)
-        {
-            sender* snd = nullptr;
-
-            // pop an sender from the free list, if that fails, create a new one
-            while (!senders_.pop(snd))
-            {
-                add_sender_to_pool();
-            }
-
-            ++senders_in_use_;
-
-            // debug info only
-            if (cnt_deb.is_enabled()) {
-                libfabric::locality addr;
-                addr.set_fi_address(fi_addr_t(rank));
-                std::size_t addrlen = libfabric::locality_defs::array_size;
-                int ret = fi_av_lookup(av_, fi_addr_t(rank),
-                                       addr.fabric_data_writable(), &addrlen);
-                if ((ret == 0) && (addrlen==libfabric::locality_defs::array_size)) {
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("get_sender")
-                        , hpx::debug::ptr(snd)
-                        , "from", iplocality(here_)
-                        , "to" , iplocality(addr)
-                        , "dest rank", hpx::debug::hex<4>(rank)
-                        , "fi_addr (rank)" , hpx::debug::hex<4>(fi_addr_t(rank))
-                        , "senders in use (get_sender)"
-                        , hpx::debug::dec<>(senders_in_use_)));
-                }
-                else {
-                    throw std::runtime_error(
-                        "get_sender : address vector traversal lookup failure");
-                }
-            }
-
-            // set the sender destination address/offset in AV table
-            snd->dst_addr_ = fi_addr_t(rank);
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("message_region_owned_ = false")));
-
-            return snd;
-        }
 
         // --------------------------------------------------------------------
         // return a receiver object
@@ -599,11 +511,15 @@ namespace libfabric
         receiver* get_expected_receiver(int rank)
         {
             receiver* rcv = nullptr;
-            if (!expected_receivers_.pop(rcv))
+            if (expected_receivers_.empty())
             {
                 rcv = new_expected_receiver();
             }
-            ++expected_receivers_in_use_;
+            else {
+                rcv = expected_receivers_.top();
+                expected_receivers_.pop();
+            }
+//            ++expected_receivers_in_use_;
 
             // debug info only
             if (cnt_deb.is_enabled()) {
@@ -620,7 +536,7 @@ namespace libfabric
                         , "src rank", hpx::debug::hex<4>(rank)
                         , "fi_addr (rank)" , hpx::debug::hex<4>(fi_addr_t(rank))
                         , "receivers in use (++ get_expected_receiver)"
-                        , hpx::debug::dec<>(expected_receivers_in_use_)));
+                        /*, hpx::debug::dec<>(expected_receivers_in_use_)*/));
                 }
                 else {
                     throw std::runtime_error("get_expected_receiver : address vector traversal failure");
@@ -639,11 +555,9 @@ namespace libfabric
         void _set_check_domain_op_value([[maybe_unused]] int op, [[maybe_unused]] const char *value)
         {
 #ifdef GHEX_LIBFABRIC_PROVIDER_GNI
-            int ret;
             struct fi_gni_ops_domain *gni_domain_ops;
             char *get_val;
-
-            ret = fi_open_ops(&fabric_domain_->fid, FI_GNI_DOMAIN_OPS_1,
+            int ret = fi_open_ops(&fabric_domain_->fid, FI_GNI_DOMAIN_OPS_1,
                       0, (void **) &gni_domain_ops, nullptr);
             if (ret) throw fabric_error(ret, "fi_open_ops");
             GHEX_DP_LAZY(cnt_deb, cnt_deb.debug("domain ops returned " , hpx::debug::ptr(gni_domain_ops)));
@@ -851,182 +765,177 @@ namespace libfabric
         // --------------------------------------------------------------------
         progress_count poll_send_queue()
         {
-            static auto polling = cnt_deb.make_timer(1
-                    , hpx::debug::str<>("poll send queue"));
-            cnt_deb.timed(polling);
+            const int MAX_SEND_COMPLETIONS = 1;
+            int ret;
+            fi_cq_msg_entry entry[MAX_SEND_COMPLETIONS];
+            // create a scoped block for the lock
+            {
+                std::unique_lock<mutex_type> lock(send_mutex_, std::try_to_lock_t{});
+                // if another thread is polling now, just exit
+                if (!lock.owns_lock()) {
+                    return progress_count{false, 0};
+                }
 
-            fi_cq_msg_entry entry;
-            int ret = fi_cq_read(txcq_, &entry, 1);
+                // poll for completions
+                {
+                    ret = fi_cq_read(txcq_, &entry[0], MAX_SEND_COMPLETIONS);
+                }
+                // if there is an error, retrieve it
+                if (ret == -FI_EAVAIL) {
+                    struct fi_cq_err_entry e = {};
+                    int err_sz = fi_cq_readerr(txcq_, &e ,0);
+                    HPX_UNUSED(err_sz);
+
+                    // flags might not be set correctly
+                    if (e.flags == (FI_MSG | FI_SEND)) {
+                        cnt_deb.error("txcq Error FI_EAVAIL for FI_SEND with len" , hpx::debug::hex<6>(e.len)
+                            , "context" , hpx::debug::ptr(e.op_context));
+                    }
+                    if (e.flags & FI_RMA) {
+                        cnt_deb.error("txcq Error FI_EAVAIL for FI_RMA with len" , hpx::debug::hex<6>(e.len)
+                            , "context" , hpx::debug::ptr(e.op_context));
+                    }
+                    rma_base *base = reinterpret_cast<rma_base*>(e.op_context);
+                    switch (base->context_type()) {
+                        case ctx_sender:
+                            reinterpret_cast<sender*>(e.op_context)->handle_error(e);
+                            break;
+                        case ctx_receiver:
+                            // this can never happen on a txcq
+                            reinterpret_cast<receiver*>(e.op_context)->handle_error(e);
+                            break;
+                    }
+                    return progress_count{false, 0};
+                }
+            }
+
             //
-            progress_count processed{ret>0, 0};
+            // release the lock and process each completion
+            //
+//                static auto polling = cnt_deb.make_timer(1
+//                        , hpx::debug::str<>("poll send queue"));
+//                cnt_deb.timed(polling);
             //
             if (ret>0) {
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
-                    , "txcq wr_id"
-                    , fi_tostr(&entry.flags, FI_TYPE_OP_FLAGS)
-                    , "(" , hpx::debug::dec<>(entry.flags) , ")"
-                    , "context" , hpx::debug::ptr(entry.op_context)
-                    , "length" , hpx::debug::hex<6>(entry.len)));
-                if (entry.flags == (FI_TAGGED | FI_MSG | FI_SEND)) {
+                progress_count processed{true, 0};
+                for (int i=0; i<ret; ++i) {
                     GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
-                        , "txcq MSG tagged send completion"));
-                    sender* handler = reinterpret_cast<sender*>(entry.op_context);
-                    processed.user_msgs += handler->handle_send_completion();
-                }
-
-                // RMA support removed
-                // else if (entry.flags & FI_RMA) {}
-
-                else if (entry.flags == (FI_MSG | FI_SEND)) {
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
-                        , "txcq MSG send completion"));
-                    sender* handler = reinterpret_cast<sender*>(entry.op_context);
-                    processed.user_msgs += handler->handle_send_completion();
-                }
-                else {
-                    cnt_deb.error("$$$$$ Received an unknown txcq completion *****"
-                        , hpx::debug::dec<>(entry.flags));
-                    std::terminate();
+                        , "txcq wr_id"
+                        , fi_tostr(&entry[i].flags, FI_TYPE_OP_FLAGS)
+                        , "(" , hpx::debug::dec<>(entry[i].flags) , ")"
+                        , "context" , hpx::debug::ptr(entry[i].op_context)
+                        , "length" , hpx::debug::hex<6>(entry[i].len)));
+                    if (entry[i].flags == (FI_TAGGED | FI_MSG | FI_SEND)) {
+                        GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
+                            , "txcq MSG tagged send completion"));
+                        sender* handler = reinterpret_cast<sender*>(entry[i].op_context);
+                        processed.user_msgs += handler->handle_send_completion();
+                    }
+                    else if (entry[i].flags == (FI_MSG | FI_SEND)) {
+                        GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
+                            , "txcq MSG send completion"));
+                        sender* handler = reinterpret_cast<sender*>(entry[i].op_context);
+                        processed.user_msgs += handler->handle_send_completion();
+                    }
                 }
                 return processed;
             }
             else if (ret==0 || ret==-FI_EAGAIN) {
                 // do nothing, we will try again on the next check
-                cnt_deb.timed(polling, "txcq" , (ret==0?"---":"FI_EAGAIN"));
-            }
-            else if (ret == -FI_EAVAIL) {
-                struct fi_cq_err_entry e = {};
-                int err_sz = fi_cq_readerr(txcq_, &e ,0);
-                HPX_UNUSED(err_sz);
-                // from the manpage 'man 3 fi_cq_readerr'
-                // On error, a negative value corresponding to
-                // 'fabric errno' is returned
-                if(e.err == err_sz) {
-                    cnt_deb.error(
-                          "txcq Error FI_EAVAIL with len" , hpx::debug::hex<6>(e.len)
-                        , "context" , hpx::debug::ptr(e.op_context));
-                }
-                // flags might not be set correctly
-                if (e.flags == (FI_MSG | FI_SEND)) {
-                    cnt_deb.error("txcq Error FI_EAVAIL for FI_SEND with len" , hpx::debug::hex<6>(e.len)
-                        , "context" , hpx::debug::ptr(e.op_context));
-                }
-                if (e.flags & FI_RMA) {
-                    cnt_deb.error("txcq Error FI_EAVAIL for FI_RMA with len" , hpx::debug::hex<6>(e.len)
-                        , "context" , hpx::debug::ptr(e.op_context));
-                }
-                rma_base *base = reinterpret_cast<rma_base*>(e.op_context);
-                switch (base->context_type()) {
-                    case ctx_sender:
-                        reinterpret_cast<sender*>(e.op_context)->handle_error(e);
-                        break;
-                    case ctx_receiver:
-                        reinterpret_cast<receiver*>(e.op_context)->handle_error(e);
-                        break;
-//                    case ctx_rma_receiver:
-//                        reinterpret_cast<rma_receiver*>(e.op_context)->handle_error(e);
-//                        break;
-                }
             }
             else {
                 cnt_deb.error("unknown error in completion txcq read");
             }
-            return processed;
+            return progress_count{false, 0};
         }
 
         // --------------------------------------------------------------------
         progress_count poll_recv_queue()
         {
-            static auto polling = cnt_deb.make_timer(1
-                    , hpx::debug::str<>("poll recv queue"));
-            cnt_deb.timed(polling);
+            const int MAX_RECV_COMPLETIONS = 1;
+            int ret;
+            fi_cq_msg_entry entry[MAX_RECV_COMPLETIONS];
+            // create a scoped block for the lock
+            {
+                std::unique_lock<mutex_type> lock(recv_mutex_, std::try_to_lock_t{});
+                // if another thread is polling now, just exit
+                if (!lock.owns_lock()) {
+                    return progress_count{false, 0};
+                }
 
-            fi_addr_t src_addr;
-            fi_cq_msg_entry entry;
+                // poll for completions
+                {
+                    ret = fi_cq_read(rxcq_, &entry[0], MAX_RECV_COMPLETIONS);
+                }
+                // if there is an error, retrieve it
+                if (ret == -FI_EAVAIL) {
+                    // read the full error status
+                    struct fi_cq_err_entry e = {};
+                    int err_sz = fi_cq_readerr(rxcq_, &e ,0);
+                    HPX_UNUSED(err_sz);
+                    // from the manpage 'man 3 fi_cq_readerr'
+                    if (e.err==FI_ECANCELED) {
+                        GHEX_DP_LAZY(cnt_deb, cnt_deb.debug("rxcq Cancelled "
+                                      , "flags"   , hpx::debug::hex<6>(e.flags)
+                                      , "len"     , hpx::debug::hex<6>(e.len)
+                                      , "context" , hpx::debug::ptr(e.op_context)));
+                        // this seems to be faulty, but we don't need to do anything
+                        // so for now, do not call cancel handler as the message
+                        // was cleaned up when cancel was called if it was successful
+                        //reinterpret_cast<receiver *>
+                        //        (entry.op_context)->handle_cancel();
+                    }
+                    else {
+                        cnt_deb.error("rxcq Error ??? "
+                                      , "err"     , hpx::debug::dec<>(-e.err)
+                                      , "flags"   , hpx::debug::hex<6>(e.flags)
+                                      , "len"     , hpx::debug::hex<6>(e.len)
+                                      , "context" , hpx::debug::ptr(e.op_context)
+                                      , "error"   ,
+                        fi_cq_strerror(rxcq_, e.prov_errno, e.err_data, (char*)e.buf, e.len));
+                        std::terminate();
+                    }
+                    return progress_count{false, 0};
+                }
+            }
 
-            // receives will use fi_cq_readfrom as we want the source address
-            int ret = fi_cq_readfrom(rxcq_, &entry, 1, &src_addr);
+
             //
-            progress_count processed{ret>0, 0};
+//            static auto polling = cnt_deb.make_timer(1
+//                    , hpx::debug::str<>("poll recv queue"));
+//            cnt_deb.timed(polling);
             //
             if (ret>0) {
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
-                    , "rxcq wr_id"
-                    , fi_tostr(&entry.flags, FI_TYPE_OP_FLAGS)
-                    , "(" , hpx::debug::dec<>(entry.flags) , ")"
-                    , "source"  , hpx::debug::dec<3>(src_addr)
-                    , "context" , hpx::debug::ptr(entry.op_context)
-                    , "length"  , hpx::debug::hex<6>(entry.len)));
-                if (src_addr == FI_ADDR_NOTAVAIL)
-                {
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("New connection?")
-                        , "(bootstrap) :"
-                        , "Source address not available..."));
-                    throw("handle_new_connection");
-//                    reinterpret_cast<receiver *>(entry.op_context)->
-//                        handle_new_connection(this, entry.len);
-                    processed.user_msgs += 1;
-                }
-//                else if ((entry.flags & FI_RMA) == FI_RMA) {
-//                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
-//                        , "rxcq RMA"));
-//                }
-//                else if (entry.flags == (FI_MSG | FI_RECV)) {
-//                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
-//                        , "rxcq recv completion"
-//                        , hpx::debug::ptr(entry.op_context)));
-//                    processed.user_msgs += reinterpret_cast<receiver *>
-//                            (entry.op_context)->handle_recv(src_addr, entry.len);
-//                }
-                else if (entry.flags == (FI_TAGGED | FI_MSG | FI_RECV)) {
+                progress_count processed{true, 0};
+                for (int i=0; i<ret; ++i) {
                     GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
-                        , "rxcq recv tagged completion"
-                        , hpx::debug::ptr(entry.op_context)));
-                    processed.user_msgs += reinterpret_cast<receiver *>
-                            (entry.op_context)->handle_recv_completion(src_addr, entry.len);
+                        , "rxcq wr_id"
+                        , fi_tostr(&entry[i].flags, FI_TYPE_OP_FLAGS)
+                        , "(" , hpx::debug::dec<>(entry[i].flags) , ")"
+                        , "context" , hpx::debug::ptr(entry[i].op_context)
+                        , "length"  , hpx::debug::hex<6>(entry[i].len)));
+                    if (entry[i].flags == (FI_TAGGED | FI_MSG | FI_RECV)) {
+                        GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
+                            , "rxcq recv tagged completion"
+                            , hpx::debug::ptr(entry[i].op_context)));
+                        processed.user_msgs += reinterpret_cast<receiver *>
+                                (entry[i].op_context)->handle_recv_completion(entry[i].len);
+                    }
+                    else {
+                        cnt_deb.error("Received an unknown rxcq completion"
+                            , hpx::debug::dec<>(entry[i].flags));
+                        std::terminate();
+                    }
                 }
-                else {
-                    cnt_deb.error("Received an unknown rxcq completion"
-                        , hpx::debug::dec<>(entry.flags));
-                    std::terminate();
-                }
+                return processed;
             }
             else if (ret==0 || ret==-FI_EAGAIN) {
                 // do nothing, we will try again on the next check
-//                LOG_TIMED_MSG(poll, DEVEL, 10, "rxcq" , (ret==0?"---":"FI_EAGAIN"));
-            }
-            else if (ret == -FI_EAVAIL) {
-                // read the full error status
-                struct fi_cq_err_entry e = {};
-                int err_sz = fi_cq_readerr(rxcq_, &e ,0);
-                HPX_UNUSED(err_sz);
-                // from the manpage 'man 3 fi_cq_readerr'
-                if (e.err==FI_ECANCELED) {
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug("rxcq Cancelled "
-                                  , "flags"   , hpx::debug::hex<6>(e.flags)
-                                  , "len"     , hpx::debug::hex<6>(e.len)
-                                  , "context" , hpx::debug::ptr(e.op_context)));
-                    // this seems to be faulty, but we don't need to do anything
-                    // so fo now, do not call cancel handler as the message
-                    // was cleaned up when cancel was called if it was successful
-                    //reinterpret_cast<receiver *>
-                    //        (entry.op_context)->handle_cancel();
-                }
-                else {
-                    cnt_deb.error("rxcq Error ??? "
-                                  , "err"     , hpx::debug::dec<>(-e.err)
-                                  , "flags"   , hpx::debug::hex<6>(e.flags)
-                                  , "len"     , hpx::debug::hex<6>(e.len)
-                                  , "context" , hpx::debug::ptr(e.op_context)
-                                  , "error"   ,
-                    fi_cq_strerror(rxcq_, e.prov_errno, e.err_data, (char*)e.buf, e.len));
-                    std::terminate();
-                }
             }
             else {
                 cnt_deb.error("unknown error in completion rxcq read");
             }
-            return processed;
+            return progress_count{false, 0};
         }
 
         // --------------------------------------------------------------------
@@ -1046,7 +955,7 @@ namespace libfabric
 
             // only one thread must be allowed to create queues,
             // and it is only required once
-            scoped_lock lock(initialization_mutex_);
+            scoped_lock lock(controller_mutex_);
             if (txcq_!=nullptr || rxcq_!=nullptr || av_!=nullptr) {
                 return;
             }
@@ -1118,6 +1027,8 @@ namespace libfabric
             return new_locality;
         }
     };
+
+    controller::expected_receiver_stack thread_local controller::expected_receivers_;
 
 }}}}
 

@@ -37,18 +37,14 @@ namespace libfabric
     {
         using region_provider    = libfabric_region_provider;
         using region_type        = rma::detail::memory_region_impl<region_provider>;
-        using memory_pool_type   = rma::memory_pool<region_provider>;
         using libfabric_msg_type = message_buffer<rma::memory_region_allocator<unsigned char>>;
         using any_msg_type       = gridtools::ghex::tl::libfabric::any_libfabric_message;
 
         // --------------------------------------------------------------------
-        sender(controller* cnt, fid_ep* endpoint, fid_domain* domain,
-            memory_pool_type* memory_pool)
+        sender(fid_ep* endpoint, fid_domain* domain)
           : rma_base(ctx_sender)
-          , controller_(cnt)
           , endpoint_(endpoint)
           , domain_(domain)
-          , memory_pool_(memory_pool)
           , dst_addr_(-1)
           , message_region_(nullptr)
           , tag_(uint64_t(-1))
@@ -68,8 +64,6 @@ namespace libfabric
         void send_tagged_region(region_type *send_region)
         {
             [[maybe_unused]] auto scp = ghex::send_deb.scope(__func__);
-            GHEX_DP_LAZY(send_deb, send_deb.debug(hpx::debug::str<>("map contents")
-                                , memory_pool_->region_alloc_pointer_map_.debug_map()));
 
             // increment counter of total messages sent
             ++sends_posted_;
@@ -89,7 +83,6 @@ namespace libfabric
                 }
                 else if (ret == -FI_EAGAIN) {
                     send_deb.error("Reposting fi_sendv / fi_tsendv");
-                    // controller_->background_work(0, controller_background_mode_all);
                 }
                 else if (ret == -FI_ENOENT) {
                     // if a node has failed, we can recover
@@ -107,24 +100,27 @@ namespace libfabric
         // --------------------------------------------------------------------
         void init_message_data(const libfabric_msg_type &msg, uint64_t tag)
         {
-            tag_                 = tag;
-            message_region_      = msg.get_buffer().m_pointer.region_;
+            tag_            = tag;
+            message_region_ = msg.get_buffer().m_pointer.region_;
             message_region_->set_message_length(msg.size());
         }
 
         void init_message_data(const any_libfabric_message &msg, uint64_t tag)
         {
-            tag_                 = tag;
-            message_region_      = msg.m_holder.m_region;
+            tag_            = tag;
+            message_region_ = msg.region();
             message_region_->set_message_length(msg.size());
         }
 
-        template <typename Message, typename Enable = typename std::enable_if<!std::is_same<libfabric_msg_type, Message>::value>::type>
+        template <typename Message,
+                  typename Enable = typename std::enable_if<
+                      !std::is_same<libfabric_msg_type, Message>::value &&
+                      !std::is_same<any_libfabric_message, Message>::value>::type>
         void init_message_data(Message &msg, uint64_t tag)
         {
-            tag_                 = tag;
             message_holder_.set_rma_from_pointer(msg.data(), msg.size());
             message_region_ = message_holder_.m_region;
+            tag_            = tag;
         }
 
         // libfabric message customization (known memory region)
@@ -140,8 +136,6 @@ namespace libfabric
         int handle_send_completion()
         {
             [[maybe_unused]] auto scp = ghex::send_deb.scope(__func__);
-            GHEX_DP_LAZY(send_deb, send_deb.debug(hpx::debug::str<>("map contents")
-                                , memory_pool_->region_alloc_pointer_map_.debug_map()));
 
             GHEX_DP_LAZY(send_deb, send_deb.debug(hpx::debug::str<>("Sender"), hpx::debug::ptr(this)
                 , "handle_send_completion"
@@ -181,10 +175,8 @@ namespace libfabric
         }
 
         // --------------------------------------------------------------------
-        controller                  *controller_;
         fid_ep                      *endpoint_;
         fid_domain                  *domain_;
-        memory_pool_type            *memory_pool_;
         fi_addr_t                    dst_addr_;
         libfabric_region_holder      message_holder_;
         region_type                 *message_region_;

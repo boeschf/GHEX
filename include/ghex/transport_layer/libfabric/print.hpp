@@ -662,19 +662,19 @@ namespace hpx { namespace debug {
         template <typename... Args>
         constexpr void debug(Args const&... args) const
         {
-            //detail::debug(prefix_, args...);
+            detail::debug(prefix_, args...);
         }
 
         template <typename... Args>
         constexpr void warning(Args const&... args) const
         {
-            //detail::warning(prefix_, args...);
+            detail::warning(prefix_, args...);
         }
 
         template <typename... Args>
         constexpr void trace(Args const&... args) const
         {
-            //detail::trace(prefix_, args...);
+            detail::trace(prefix_, args...);
         }
 
         template <typename... Args>
@@ -686,49 +686,49 @@ namespace hpx { namespace debug {
         template <typename... Args>
         scoped_var<Args...> scope(Args const&... args)
         {
-            return false; // return scoped_var<Args...>(prefix_, args...);
+            return scoped_var<Args...>(prefix_, args...);
         }
 
         template <typename... T, typename... Args>
         void timed(const timed_var<T...>& init, Args const&... args) const
         {
-//            auto now = std::chrono::steady_clock::now();
-//            if (init.elapsed(now))
-//            {
-//                detail::timed(prefix_, init, args...);
-//            }
+            auto now = std::chrono::steady_clock::now();
+            if (init.elapsed(now))
+            {
+                detail::timed(prefix_, init, args...);
+            }
         }
 
         template <typename T>
         void array(std::string const& name, std::vector<T> const& v) const
         {
-//            std::cout << str<20>(name.c_str()) << ": {"
-//                      << debug::dec<4>(v.size()) << "} : ";
-//            std::copy(std::begin(v), std::end(v),
-//                std::ostream_iterator<T>(std::cout, ", "));
-//            std::cout << "\n";
+            std::cout << str<20>(name.c_str()) << ": {"
+                      << debug::dec<4>(v.size()) << "} : ";
+            std::copy(std::begin(v), std::end(v),
+                std::ostream_iterator<T>(std::cout, ", "));
+            std::cout << "\n";
         }
 
         template <typename T, std::size_t N>
         void array(std::string const& name, const std::array<T, N>& v) const
         {
-//            std::cout << str<20>(name.c_str()) << ": {"
-//                      << debug::dec<4>(v.size()) << "} : ";
-//            std::copy(std::begin(v), std::end(v),
-//                std::ostream_iterator<T>(std::cout, ", "));
-//            std::cout << "\n";
+            std::cout << str<20>(name.c_str()) << ": {"
+                      << debug::dec<4>(v.size()) << "} : ";
+            std::copy(std::begin(v), std::end(v),
+                std::ostream_iterator<T>(std::cout, ", "));
+            std::cout << "\n";
         }
 
         template <typename Iter>
         void array(std::string const& name, Iter begin, Iter end) const
         {
-//            std::cout << str<20>(name.c_str()) << ": {"
-//                      << debug::dec<4>(std::distance(begin, end)) << "} : ";
-//            std::copy(begin, end,
-//                std::ostream_iterator<
-//                    typename std::iterator_traits<Iter>::value_type>(
-//                    std::cout, ", "));
-//            std::cout << std::endl;
+            std::cout << str<20>(name.c_str()) << ": {"
+                      << debug::dec<4>(std::distance(begin, end)) << "} : ";
+            std::copy(begin, end,
+                std::ostream_iterator<
+                    typename std::iterator_traits<Iter>::value_type>(
+                    std::cout, ", "));
+            std::cout << std::endl;
         }
 
         template <typename T, typename... Args>

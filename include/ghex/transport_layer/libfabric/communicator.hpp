@@ -27,6 +27,44 @@ namespace gridtools {
         namespace tl {
             namespace libfabric {            
 
+                namespace detail {
+
+                    // -----------------------------------------------------------------
+                    // an MPI error handling type that we can use to intercept
+                    // MPI errors if we enable the error handler
+                    static MPI_Errhandler hpx_mpi_errhandler = 0;
+
+                    // extract MPI error message
+                    std::string error_message(int code)
+                    {
+                        int N = 1023;
+                        std::unique_ptr<char[]> err_buff(new char[std::size_t(N) + 1]);
+                        err_buff[0] = '\0';
+
+                        MPI_Error_string(code, err_buff.get(), &N);
+
+                        return err_buff.get();
+                    }
+
+                    // function that converts an MPI error into an exception
+                    void hpx_MPI_Handler(MPI_Comm*, int* errorcode, ...)
+                    {
+                        std::string temp = std::string("hpx_MPI_Handler : ") +
+                                detail::error_message(*errorcode);
+                        std::cout << temp << std::endl;
+                        throw(std::runtime_error(temp));
+                    }
+
+                    // set an error handler for communicators that will be called
+                    // on any error instead of the default behavior of program termination
+                    void set_error_handler()
+                    {
+                        MPI_Comm_create_errhandler(
+                            detail::hpx_MPI_Handler, &detail::hpx_mpi_errhandler);
+                        MPI_Comm_set_errhandler(MPI_COMM_WORLD, detail::hpx_mpi_errhandler);
+                    }
+                }
+
                 using region_provider    = libfabric_region_provider;
                 using region_type        = rma::detail::memory_region_impl<region_provider>;
 
@@ -69,14 +107,124 @@ namespace gridtools {
                     using progress_status        = ghex::tl::cb::progress_status;
                     using controller_shared      = std::shared_ptr<ghex::tl::libfabric::controller>;
 
-                    thread_token* m_token_ptr;
+                    thread_token        *m_token_ptr;
+                    struct fid_ep       *endpoint_;
+                    struct fid_domain   *fabric_domain_;
+                    //
                     int  m_progressed_sends = 0;
                     int  m_progressed_recvs = 0;
                     int m_progressed_cancels = 0;
+                    //
 
-                    communicator_state(thread_token* t)
+                    // We maintain a list of senders that are being used
+                    using sender_list = std::stack<sender*>;
+                    std::atomic<unsigned int> senders_in_use_;
+
+                    communicator_state(thread_token* t, struct fid_ep *endpoint, struct fid_domain *domain)
                     : m_token_ptr{t}
-                    {}
+                    , endpoint_(endpoint)
+                    , fabric_domain_(domain)
+                    {
+                        // only init the sender list once per thread
+                        static thread_local std::atomic_flag initialized = ATOMIC_FLAG_INIT;
+                        if (initialized.test_and_set()) return;
+                        //
+                        for (std::size_t i = 0; i < 16; ++i)
+                        {
+//                            add_sender_to_pool();
+                        }
+                    }
+
+                    ~communicator_state()
+                    {
+                        // clear senders list
+                        int i = 0;
+                        bool ok = true;
+                        sender* snd = nullptr;
+                        while (!senders()->empty()) {
+                            snd = senders()->top();
+                            std::cout << "Deleting sender " << i++ << " " << senders()->size() << " " << snd << std::endl;
+                            delete snd;
+                            senders()->pop();
+                            std::cout << "Deleted sender " << senders()->size() << " " << snd << std::endl;
+                        }
+                    }
+
+                    // --------------------------------------------------
+                    static sender_list *senders() {
+                        static thread_local std::unique_ptr<sender_list> instance(new sender_list());
+                        return instance.get();
+                    }
+
+                    // --------------------------------------------------------------------
+                    // return a sender object
+                    // --------------------------------------------------------------------
+                    void add_sender_to_pool() {
+                        sender *snd = new sender(endpoint_, fabric_domain_);
+                        // after a sender has been used, it's postprocess handler
+                        // is called, this returns it to the free list
+                        snd->postprocess_handler_ = [this](sender* s)
+                            {
+            //                    --senders_in_use_;
+                                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("senders in use")
+                                              , "(-- stack sender)"
+                                              , hpx::debug::ptr(s)
+                                              /*, hpx::debug::dec<>(senders_in_use_)*/));
+                                std::cout << "Pushing sender (PPH) " << s << std::endl;
+                                senders()->push(s);
+                                std::cout << "Pushed sender " << senders()->size() << " " << s << std::endl;
+                                // trigger_pending_work();
+                            };
+                        // put the new sender on the free list
+                        std::cout << "Pushing sender " << snd << std::endl;
+                        senders()->push(snd);
+                        std::cout << "Pushed sender " << senders()->size() << " " << snd << std::endl;
+                    }
+
+                    sender* get_sender(int rank)
+                    {
+                        sender* snd = nullptr;
+                        // pop an sender from the free list, if that fails, create a new one
+                        if (senders()->empty())
+                        {
+                            add_sender_to_pool();
+                        }
+                        snd = senders()->top();
+                        senders()->pop();
+                        std::cout << "Popped sender " << " " << snd << std::endl;
+
+            //            ++senders_in_use_;
+
+                        // debug info only
+
+//                        if (com_deb.is_enabled()) {
+//                            libfabric::locality addr;
+//                            addr.set_fi_address(fi_addr_t(rank));
+//                            std::size_t addrlen = libfabric::locality_defs::array_size;
+//                            int ret = fi_av_lookup(av_, fi_addr_t(rank),
+//                                                   addr.fabric_data_writable(), &addrlen);
+//                            if ((ret == 0) && (addrlen==libfabric::locality_defs::array_size)) {
+//                                GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("get_sender")
+//                                    , hpx::debug::ptr(snd)
+//                                    , "from", iplocality(here_)
+//                                    , "to" , iplocality(addr)
+//                                    , "dest rank", hpx::debug::hex<4>(rank)
+//                                    , "fi_addr (rank)" , hpx::debug::hex<4>(fi_addr_t(rank))
+//                                    , "senders in use (get_sender)"
+//                                    /*, hpx::debug::dec<>(senders_in_use_)*/));
+//                            }
+//                            else {
+//                                throw std::runtime_error(
+//                                    "get_sender : address vector traversal lookup failure");
+//                            }
+//                        }
+
+                        // set the sender destination address/offset in AV table
+                        snd->dst_addr_ = fi_addr_t(rank);
+                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("message_region_owned_ = false")));
+
+                        return snd;
+                    }
 
                     progress_status progress() {
                         return {
@@ -113,7 +261,7 @@ namespace gridtools {
                     }
                 };
 
-                /** @brief A communicator for MPI point-to-point communication.
+                /** @brief A communicator for point-to-point communication.
                   * This class is lightweight and copying/moving instances is safe and cheap.
                   * Communicators can be created through the context, and are thread-compatible.
                   * @tparam ThreadPrimitives The thread primitives type */
@@ -150,7 +298,9 @@ namespace gridtools {
                     communicator(shared_state_type* shared_state, state_type* state)
                     : m_shared_state{shared_state}
                     , m_state{state}
-                    {}
+                    {
+                        detail::set_error_handler();
+                    }
                     communicator(const communicator&) = default;
                     communicator(communicator&&) = default;
                     communicator& operator=(const communicator&) = default;
@@ -183,7 +333,7 @@ namespace gridtools {
                         // get main libfabric controller
                         auto controller = m_shared_state->m_controller;
                         // get a sender
-                        ghex::tl::libfabric::sender *sndr = controller->get_sender(dst);
+                        ghex::tl::libfabric::sender *sndr = m_state->get_sender(dst);
 
                         // create a request
                         std::shared_ptr<context_info> result(new context_info{false, nullptr});
@@ -239,7 +389,7 @@ std::cout << "Using reference send function " << std::endl;
                         // get main libfabric controller
                         auto controller = m_shared_state->m_controller;
                         // get a sender
-                        ghex::tl::libfabric::sender *sndr = controller->get_sender(dst);
+                        ghex::tl::libfabric::sender *sndr = m_state->get_sender(dst);
 
                         // create a request
                         std::shared_ptr<context_info> result(new context_info{false, nullptr});
@@ -475,6 +625,7 @@ std::cout << "Using reference send function " << std::endl;
         } // namespace tl
     } // namespace ghex
 } // namespace gridtools
+
 
 #endif /* INCLUDED_GHEX_TL_LIBFABRIC_COMMUNICATOR_CONTEXT_HPP */
 
