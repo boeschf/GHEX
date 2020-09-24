@@ -81,3 +81,5 @@ if (GHEX_ENABLE_ATLAS_BINDINGS)
         endif()
     endforeach()
 endif()
+
+add_subdirectory(scripts)

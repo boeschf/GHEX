@@ -1,0 +1,143 @@
+#!/bin/bash
+
+function write_script
+{
+JOB_NAME=$(printf 'ghex-bench-N%03d-T%03d-I%03d' ${NODES} ${THREADS} ${INFLIGHT})
+DIR_NAME=${JOB_NAME}
+
+if [ -d "$DIR_NAME" ]; then
+  # Directory already exists, skip generation of this job
+  echo "Exists already : Skipping $DIR_NAME"
+  return 1
+fi
+
+echo "Creating job $DIR_NAME"
+
+mkdir -p $DIR_NAME
+
+cat << _EOF_ > ${DIR_NAME}/submit-job.bash
+#!/bin/bash
+
+#SBATCH --job-name=${JOB_NAME}
+#SBATCH --account=csstaff
+#SBATCH --output=slurm.out
+#SBATCH --error=slurm.err
+#SBATCH --nodes=${NODES}
+#SBATCH --time=${TIME}
+#SBATCH --exclusive
+#SBATCH --distribution=cyclic
+#SBATCH --constraint=mc
+#SBATCH --partition=${QUEUE}
+#SBATCH --tasks-per-node=${PROCESSES_PERNODE}
+#SBATCH --cpus-per-task=36
+
+# -----------------------
+# setup versions
+# -----------------------
+GCC_version=8.3.0
+MPI_version=7.7.15
+
+# -----------------------
+# Modules
+# -----------------------
+module purge
+module load     slurm
+module unload   PrgEnv-cray
+module load     PrgEnv-gnu
+module unload   gcc
+module load     gcc/\$GCC_version
+
+module unload   cray-libsci
+module unload   cray-mpich
+module load     cray-mpich/\$MPI_version
+module load     daint-mc
+module unload   intel
+
+# needed on the cray for MPI_THREAD_MULTIPLE
+export MPICH_MAX_THREAD_SAFETY=multiple
+
+# -----------------------
+# Benchmark
+# -----------------------
+
+TIMEOUT=500s
+
+# extensions might be a list of transport layer backend separated by ";"
+BACKENDS="@BENCHMARK_SUFFIXES@"
+# replace ";" with " " and add an empty "" for mpi backend (no suffix)
+EXT=("" \$(echo "\$BACKENDS" | sed -r 's/;/ /g'))
+
+SIZE=(1       1000    10000   20000   50000   100000 200000 500000 1000000 2000000)
+NMSG=(1000000 1000000 1000000 1000000 1000000 500000 250000 100000 50000   25000)
+PROGS="ghex_p2p_bi_cb_avail_mt ghex_p2p_bi_cb_wait_mt ghex_p2p_bi_ft_avail_mt ghex_p2p_bi_ft_wait_mt"
+
+export OMP_NUM_THREADS=$THREADS
+export MKL_NUM_THREADS=$THREADS
+
+for i in "\${!SIZE[@]}"; do
+  for ext in "\${EXT[@]}"; do
+    for p in \$PROGS; do
+      cmd="time $MPIEXEC -x OMP_NUM_THREADS -n 2 timeout \$TIMEOUT $BIN_DIR/\$p\$ext \${NMSG[\$i]} \${SIZE[\$i]} $INFLIGHT"
+      file="\$p\$ext.$THREADS.\${NMSG[\$i]}.\${SIZE[\$i]}.$INFLIGHT"
+      printf "Running\n\$cmd >\$file\n"
+      \$cmd >\$file
+    done
+  done
+done
+
+_EOF_
+
+# make the job script executable
+chmod 775 ${DIR_NAME}/submit-job.bash
+
+# create a command that launches the job and adds the jobid to the cancel jobs script
+echo "cd ${DIR_NAME}; JOB=\$(sbatch submit-job.bash) ; echo \"\$JOB\" ; echo \"\$JOB\" | sed 's/Submitted batch job/scancel/g' >> \$BASEDIR/cancel_jobs.bash; cd \$BASEDIR" >> run_jobs.bash
+
+}
+
+# get the path to this generate script, works for most cases
+pushd `dirname $0` > /dev/null
+BASEDIR=`pwd`
+popd > /dev/null
+echo "Generating jobs using base directory $BASEDIR"
+
+# Create another script to submit all generated jobs to the scheduler
+echo "#!/bin/bash" > run_jobs.bash
+echo "BASEDIR=$BASEDIR" >> run_jobs.bash
+echo "cd $BASEDIR" >> run_jobs.bash
+echo "echo \"#!/bin/bash\" > cancel_jobs.bash" >> run_jobs.bash
+echo "chmod +x cancel_jobs.bash" >> run_jobs.bash
+
+#!/bin/bash
+
+chmod 775 run_jobs.bash
+
+#
+# fixed options that are put here by cmake
+#
+MPIEXEC="@MPIEXEC@"
+BIN_DIR=@BIN_DIR@
+JOB_OPTIONS1="@JOB_OPTIONS1@"
+
+#
+# Fixed options, for now ...
+#
+TIME="04:00:00"
+PROCESSES_PERNODE=1
+NODES=2
+
+NTHR=(1 2 4 8 16 32 36 72)
+NFLIGHT=(1 2 4 8 16 32 64 128)
+
+# Loop through all the parameter combinations generating jobs for each
+
+for THREADS in "${NTHR[@]}"
+do
+  for INFLIGHT in "${NFLIGHT[@]}"
+  do
+    QUEUE=normal
+    write_script
+  done
+done
+
+echo "echo \"Use find . -name \*.out -exec grep CSVData {} \;\" " >> run_jobs.bash
