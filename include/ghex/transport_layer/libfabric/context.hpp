@@ -33,47 +33,48 @@ namespace gridtools {
             using state_type = typename communicator_type::state_type;
             using state_ptr = std::unique_ptr<state_type>;
             using state_vector = std::vector<state_ptr>;
-
-            thread_primitives_type& m_thread_primitives;
-            MPI_Comm m_comm;
-            std::vector<thread_token>  m_tokens;
-            shared_state_type m_shared_state;
-            state_type m_state;
-            state_vector m_states;
-            std::uintptr_t ctag_;
-
             using controller_type = ghex::tl::libfabric::controller;
-            controller_type  *controller_;
+
+            thread_primitives_type   &m_thread_primitives;
+            MPI_Comm                  m_comm;
+            int                       m_rank;
+            int                       m_size;
+            controller_type          *m_controller;
+            state_vector              m_states;
+            std::vector<thread_token> m_tokens;
+            shared_state_type         m_shared_state;
+            state_type                m_state;
+            std::uintptr_t            ctag_;
 
             // --------------------------------------------------
-            // create a sngleton shared_ptr to a controller that
+            // create a sngleton shared_ptr to a libfabric controller that
             // can be shared between ghex context objects
-            static controller_type *init_libfabric_controller(int m_rank, int m_size, MPI_Comm mpi_comm) {
+            static controller_type *init_libfabric_controller(MPI_Comm comm, int rank, int size)
+            {
+                static std::mutex m_init_mutex;
+                std::lock_guard<std::mutex> lock(m_init_mutex);
                 static std::unique_ptr<controller_type> instance(new controller_type(
                         GHEX_LIBFABRIC_PROVIDER,
                         GHEX_LIBFABRIC_DOMAIN,
-                        m_rank, m_size, mpi_comm
+                        comm, rank, size
                     ));
+                instance->startup();
                 return instance.get();
             }
 
             // --------------------------------------------------
             template<typename... Args>
             transport_context(ThreadPrimitives& tp, MPI_Comm mpi_comm, Args&&...)
-            : m_thread_primitives(tp)
-            , m_comm{mpi_comm}
-            , m_tokens(tp.size())
-            , m_shared_state(nullptr, this, &tp)
-            , m_state(nullptr)
-            , m_states(tp.size())
+              : m_thread_primitives(tp)
+              , m_comm{mpi_comm}
+              , m_rank{ [](MPI_Comm c){ int r; GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(c,&r)); return r; }(m_comm) }
+              , m_size{ [](MPI_Comm c){ int s; GHEX_CHECK_MPI_RESULT(MPI_Comm_size(c,&s)); return s; }(m_comm) }
+              , m_controller(init_libfabric_controller(m_comm, m_rank, m_size))
+              , m_states(tp.size())
+              , m_tokens(tp.size())
+              , m_shared_state{m_controller, this, &tp}
+              , m_state{nullptr}
             {
-                int m_rank{ [](MPI_Comm c){ int r; GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(c,&r)); return r; }(mpi_comm) };
-                int m_size{ [](MPI_Comm c){ int s; GHEX_CHECK_MPI_RESULT(MPI_Comm_size(c,&s)); return s; }(mpi_comm) };
-
-                controller_ = init_libfabric_controller(m_rank, m_size, mpi_comm);
-                m_shared_state.m_controller = controller_;
-                controller_->startup();
-                //
                 const int tag_value = 65535;
                 if (m_rank==0) {
                     ctag_ = reinterpret_cast<std::uintptr_t>(this);
@@ -104,7 +105,7 @@ namespace gridtools {
 
             controller_type *get_libfabric_controller()
             {
-                return m_shared_state.m_controller;
+                return m_controller;
             }
         };
 

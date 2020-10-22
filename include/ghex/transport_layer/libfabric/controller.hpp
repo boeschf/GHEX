@@ -148,14 +148,8 @@ namespace libfabric
         expected_receiver_stack expected_receivers_;
         std::atomic<unsigned int> expected_receivers_in_use_;
 
-        int      m_rank_;
-        int      m_size_;
-        MPI_Comm m_comm_;
-
         locality here_;
         locality root_;
-
-        std::size_t get_num_localities() { return m_size_; }
 
         // store info about local device
         std::string  device_;
@@ -174,7 +168,7 @@ namespace libfabric
         controller(
             std::string const &provider,
             std::string const &domain,
-            int rank, int size, MPI_Comm mpi_comm)
+            MPI_Comm mpi_comm, int rank, int size)
           : fabric_info_(nullptr)
           , fabric_(nullptr)
           , fabric_domain_(nullptr)
@@ -187,15 +181,11 @@ namespace libfabric
           , av_(nullptr)
             //
           , immediate_(false)
-          , senders_in_use_(0)
-          , m_rank_(rank)
-          , m_size_(size)
-          , m_comm_(mpi_comm)
         {
             std::cout.setf(std::ios::unitbuf);
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
 
-            open_fabric(provider, domain);
+            open_fabric(provider, domain, rank);
 
             // setup a passive listener, or an active RDM endpoint
             here_ = create_local_endpoint();
@@ -210,7 +200,7 @@ namespace libfabric
             allocator.init_memory_pool(memory_pool_.get());
             libfabric_region_holder::memory_pool_ = memory_pool_.get();
 
-            initialize_localities();
+            initialize_localities(mpi_comm, rank, size);
 
 #if defined(GHEX_LIBFABRIC_HAVE_BOOTSTRAPPING)
             if (bootstrap) {
@@ -226,6 +216,7 @@ namespace libfabric
                 }
             }
 #endif
+            startup();
         }
 
         // --------------------------------------------------------------------
@@ -296,11 +287,11 @@ namespace libfabric
 
         // --------------------------------------------------------------------
         // send rank 0 address to root and receive array of localities
-        void MPI_exchange_localities()
+        void MPI_exchange_localities(MPI_Comm comm, int rank, int size)
         {
-            std::vector<char> localities(m_size_*locality_defs::array_size, 0);
+            std::vector<char> localities(size*locality_defs::array_size, 0);
             //
-            if (m_rank_ > 0)
+            if (rank > 0)
             {
                 GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("sending here")
                     , iplocality(here_)
@@ -311,7 +302,7 @@ namespace libfabric
                             MPI_CHAR,
                             0, // dst rank
                             0, // tag
-                            m_comm_);
+                            comm);
 
                 GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("receiving all")
                     , "size", locality_defs::array_size));
@@ -319,47 +310,47 @@ namespace libfabric
                 MPI_Status status;
                 /*err = */MPI_Recv(
                             localities.data(),
-                            m_size_*locality_defs::array_size,
+                            size*locality_defs::array_size,
                             MPI_CHAR,
                             0, // src rank
                             0, // tag
-                            m_comm_,
+                            comm,
                             &status);
                 GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("received addresses")));
             }
             else {
                 GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("receiving addresses")));
                 memcpy(&localities[0], here_.fabric_data(), locality_defs::array_size);
-                for (int i=1; i<m_size_; ++i) {
+                for (int i=1; i<size; ++i) {
                     GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("receiving address"), hpx::debug::dec<>(i)));
                     MPI_Status status;
                     /*int err = */MPI_Recv(
                                 &localities[i*locality_defs::array_size],
-                                m_size_*locality_defs::array_size,
+                                size*locality_defs::array_size,
                                 MPI_CHAR,
                                 i, // src rank
                                 0, // tag
-                                m_comm_,
+                                comm,
                                 &status);
                     GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("received address"), hpx::debug::dec<>(i)));
                 }
 
                 GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("sending all")));
-                for (int i=1; i<m_size_; ++i) {
+                for (int i=1; i<size; ++i) {
                     GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("sending to"), hpx::debug::dec<>(i)));
                     /*int err = */MPI_Send(
                                 &localities[0],
-                                m_size_*locality_defs::array_size,
+                                size*locality_defs::array_size,
                                 MPI_CHAR,
                                 i, // dst rank
                                 0, // tag
-                                m_comm_);
+                                comm);
                 }
             }
 
             // all ranks should now have a full localities vector
             GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("populating vector")));
-            for (int i=0; i<m_size_; ++i) {
+            for (int i=0; i<size; ++i) {
                 locality temp;
                 int offset = i*locality_defs::array_size;
                 memcpy(temp.fabric_data_writable(), &localities[offset], locality_defs::array_size);
@@ -369,7 +360,7 @@ namespace libfabric
 
         // --------------------------------------------------------------------
         // initialize the basic fabric/domain/name
-        void open_fabric(std::string const& provider, std::string const& domain)
+        void open_fabric(std::string const& provider, std::string const& domain, int rank)
         {
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
             struct fi_info *fabric_hints_ = fi_allocinfo();
@@ -384,7 +375,7 @@ namespace libfabric
 //#ifdef GHEX_LIBFABRIC_HAVE_BOOTSTRAPPING
 #if defined(GHEX_LIBFABRIC_SOCKETS)
             // If we are the root node, then create connection with the right port address
-            if (m_rank_ == 0) {
+            if (rank == 0) {
                 GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("root locality = src")
                               , iplocality(root_)));
                 // this memory will (should) be deleted in hints destructor                
@@ -777,18 +768,18 @@ namespace libfabric
         // --------------------------------------------------------------------
         // if we did not bootstrap, then fetch the list of all localities
         // from agas and insert each one into the address vector
-        void initialize_localities()
+        void initialize_localities(MPI_Comm comm, int rank, int size)
         {
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
 #ifndef GHEX_LIBFABRIC_HAVE_BOOTSTRAPPING
             GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("initialize_localities")
-                , m_size_ , " localities"));
+                , size , "localities"));
 
             // make sure address vector is created
-            create_completion_queues(fabric_info_, m_size_ );
+            create_completion_queues(fabric_info_, size);
 
-            MPI_exchange_localities();
-            debug_print_av_vector();
+            MPI_exchange_localities(comm, rank, size);
+            debug_print_av_vector(size);
 #endif
             GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Done localities")));
         }
@@ -813,58 +804,9 @@ namespace libfabric
         typedef std::function<void(fid_ep *endpoint, uint32_t ipaddr)>
             DisconnectionFunction;
 
-//        typedef std::function<void(libfabric::controller *controller,
-//                                   const libfabric::locality &remote_addr)>
-//            BootstrapFunction;
-
         // --------------------------------------------------------------------
-
-        // send full address list back to the address that contacted us
-        void update_bootstrap_connections()
+        void debug_print_av_vector(int N)
         {
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("accepting bootstrap")));
-            if (--bootstrap_counter_ == 0) {
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("bootstrap clients")));
-                std::size_t N = get_num_localities();
-                //
-                std::vector<libfabric::locality> addresses;
-                addresses.reserve(N);
-                //
-                libfabric::locality addr;
-                std::size_t addrlen = libfabric::locality_defs::array_size;
-                for (std::size_t i=0; i<N; ++i) {
-                    int ret = fi_av_lookup(av_, fi_addr_t(i),
-                                           addr.fabric_data_writable(), &addrlen);
-                    if ((ret == 0) && (addrlen==libfabric::locality_defs::array_size)) {
-                        addr.set_fi_address(fi_addr_t(i));
-                        GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("bootstrap sending") , iplocality(addr)));
-                        addresses.push_back(addr);
-                    }
-                    else {
-                        throw std::runtime_error("update_bootstrap_connections : address vector traversal failure");
-                    }
-                }
-
-                // don't send addresses to self, start at index=1
-                for (std::size_t i=1; i<N; ++i) {
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Sending bootstrap list")
-                        , iplocality(addresses[i])));
-
-//                    parcelport_->send_raw_data(addresses[i]
-//                        , addresses.data()
-//                        , N*sizeof(libfabric::locality)
-//                        , libfabric::header<
-//                            GHEX_LIBFABRIC_MESSAGE_HEADER_SIZE>::bootstrap_flag);
-
-                }
-                //parcelport_->set_bootstrap_complete();
-            }
-        }
-
-        // --------------------------------------------------------------------
-        void debug_print_av_vector()
-        {
-            std::size_t N = get_num_localities();
             libfabric::locality addr;
             std::size_t addrlen = libfabric::locality_defs::array_size;
             for (std::size_t i=0; i<N; ++i) {
@@ -1151,31 +1093,6 @@ namespace libfabric
                 ret = fi_av_open(fabric_domain_, &av_attr, &av_, nullptr);
                 if (ret) throw fabric_error(ret, "fi_av_open");
             }
-        }
-
-        // --------------------------------------------------------------------
-        // needed at bootstrap time to find the correct fi_addr_t for
-        // a locality
-        bool resolve_address(libfabric::locality &address)
-        {
-            std::size_t N = get_num_localities();
-            std::size_t addrlen = libfabric::locality_defs::array_size;
-            libfabric::locality addr;
-            for (std::size_t i=0; i<N; ++i) {
-                int ret = fi_av_lookup(av_, fi_addr_t(i),
-                                       addr.fabric_data_writable(), &addrlen);
-                if ((ret == 0) && (addrlen==libfabric::locality_defs::array_size)) {
-                    if (addr == address) {
-                        address.set_fi_address(fi_addr_t(i));
-                        return true;
-                    }
-                }
-                else {
-                    throw std::runtime_error(
-                        "address vector resolve_address failure");
-                }
-            }
-            return false;
         }
 
         // --------------------------------------------------------------------

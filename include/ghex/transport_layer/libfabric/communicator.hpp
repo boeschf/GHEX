@@ -52,8 +52,8 @@ namespace gridtools {
                     , m_thread_primitives{tp}
                     {}
 
-                    rank_type rank() const noexcept { return m_controller->m_rank_; }
-                    rank_type size() const noexcept { return m_controller->m_size_; }
+                    rank_type rank() const noexcept { return m_context->m_rank; }
+                    rank_type size() const noexcept { return m_context->m_size; }
                 };
 
                 /** @brief communicator per-thread data.
@@ -454,12 +454,12 @@ namespace gridtools {
                         if (auto token_ptr = m_state->m_token_ptr) {
                             auto& tp = *(m_shared_state->m_thread_primitives);
                             auto& token = *token_ptr;
-                            tp.single(token, [this]() { MPI_Barrier(m_shared_state->m_controller->m_comm_); } );
+                            tp.single(token, [this]() { MPI_Barrier(m_shared_state->m_context->m_comm); } );
                             progress(); // progress once more to set progress counters to zero
                             tp.barrier(token);
                         }
                         else
-                            MPI_Barrier(m_shared_state->m_controller->m_comm_);
+                            MPI_Barrier(m_shared_state->m_context->m_comm);
                     }
                 };
 
