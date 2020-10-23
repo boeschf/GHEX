@@ -13,6 +13,11 @@
 #include <ghex/transport_layer/libfabric/rma/memory_pool.hpp>
 #include <ghex/transport_layer/callback_utils.hpp>
 
+#ifdef SHOW_STACKTRACE
+#define BOOST_STACKTRACE_USE_ADDR2LINE
+#include <boost/stacktrace.hpp>
+#endif
+
 namespace gridtools { namespace ghex {
     // cppcheck-suppress ConfigurationNotChecked
     static hpx::debug::enable_print<false> any_deb("ANY_MSG");
@@ -58,8 +63,6 @@ namespace libfabric
     {
         using region_provider   = libfabric_region_provider;
         using region_type       = rma::detail::memory_region_impl<region_provider>;
-//        template<typename T>
-//        using allocator_type    = rma::memory_region_allocator<T>;
 
         // needed for registering and unregistering memory
         static rma::memory_pool<libfabric_region_provider> *memory_pool_;
@@ -115,10 +118,10 @@ namespace libfabric
             m_region     = nullptr;
         }
 
-        void set_rma(region_type *region, std::size_t size)
+        void set_rma_region(region_type *region, std::size_t size)
         {
             m_unregister = false;
-            m_region = region;
+            m_region     = region;
             m_region->set_message_length(size);
         }
 
@@ -126,6 +129,9 @@ namespace libfabric
         // ideally, all buffers have regions associated with them
         void set_rma_from_pointer(const void *ptr, std::size_t size)
         {
+#ifdef SHOW_STACKTRACE
+            std::cout << "set_rma_from_pointer" << std::endl << boost::stacktrace::stacktrace() << std::endl;
+#endif
             // did someone register this memory block and store it in the memory pool map
             m_region = dynamic_cast<region_type*>(
                         memory_pool_->region_from_address(ptr));
@@ -151,6 +157,22 @@ namespace libfabric
         bool         m_unregister;
     };
 
+    /** @brief simple wrapper around an l-value reference message (stores pointer and size)
+      * @tparam T value type of the messages content */
+    template<typename T>
+    struct libfabric_ref_message
+    {
+        using region_provider   = libfabric_region_provider;
+        using region_type       = rma::detail::memory_region_impl<region_provider>;
+
+        using value_type = T;
+        T* m_data;
+        std::size_t m_size;
+        region_type *m_region;
+        T* data() noexcept { return m_data; }
+        const T* data() const noexcept { return m_data; }
+        std::size_t size() const noexcept { return m_size; }
+    };
 
     /** @brief type erased message capable of holding any message. Uses optimized initialization for
       * ref_messages and std::shared_ptr pointing to messages. */
@@ -186,6 +208,7 @@ namespace libfabric
             m_ptr = std::make_unique<cb::any_message::holder<Message>>(std::move(m));
         }
 
+
         /** @brief Construct from a reference: copies the pointer to the data and size of the data.
           * Note, that this operation will not allocate storage on the heap.
           * @tparam T a message type
@@ -197,6 +220,20 @@ namespace libfabric
         , m_holder{}
         {
             init_rma(std::forward<cb::ref_message<T>>(m));
+//            throw std::runtime_error("Help");
+        }
+
+        /** @brief Construct from a reference: copies the pointer to the data and size of the data.
+          * Note, that this operation will not allocate storage on the heap.
+          * @tparam T a message type
+          * @param m a ref_message to a message. */
+        template<typename T>
+        explicit any_libfabric_message(libfabric_ref_message<T>&& m)
+        : m_data{reinterpret_cast<unsigned char*>(m.data())}
+        , m_size{m.size()*sizeof(T)}
+        , m_holder{}
+        {
+            init_rma(m.m_region, m_size);
         }
 
         /** @brief Construct from a shared pointer: will share ownership with the shared pointer (aliasing)
@@ -237,9 +274,7 @@ namespace libfabric
         const unsigned char* data() const noexcept { return m_data; }
         std::size_t size() const noexcept { return m_size; }
 
-        region_type *get_rma_region() {
-            return m_holder.m_region;
-        }
+        region_type *region() const { return m_holder.m_region; }
 
         // #############################
         // setup RMA info
@@ -255,16 +290,21 @@ namespace libfabric
             m_holder.set_rma_from_pointer(msg.data(), msg.size());
         }
 
+        void init_rma(region_type *region, std::size_t size)
+        {
+            m_holder.set_rma_region(region, size);
+        }
+
         // message buffer with a libfabric allocator
 //        template <typename T>
         void init_rma(libfabric_message_type<unsigned char> & msg) {
-            m_holder.set_rma(msg.get_buffer().m_pointer.region_, msg.size());
+            m_holder.set_rma_region(msg.get_buffer().m_pointer.region_, msg.size());
         }
 
         // shared pointer to message buffer with libfabric allocator
 //        template <typename T>
         void init_rma(std::shared_ptr<libfabric_message_type<unsigned char>> &smsg) {
-            m_holder.set_rma(
+            m_holder.set_rma_region(
                         smsg->get_buffer().m_pointer.region_,
                         smsg->size());
         }
@@ -273,13 +313,13 @@ namespace libfabric
         // shared message buffer
 //        template <typename T>
         void init_rma(tl::shared_message_buffer<allocator_type<unsigned char>> &smsg) {
-            m_holder.set_rma(
+            m_holder.set_rma_region(
                         smsg.m_message->get_buffer().m_pointer.region_,
                         smsg.m_message->size());
         }
 
         void init_rma(std::shared_ptr<tl::shared_message_buffer<allocator_type<unsigned char>>> &smsg) {
-            m_holder.set_rma(
+            m_holder.set_rma_region(
                         smsg->m_message->get_buffer().m_pointer.region_,
                         smsg->m_message->size());
         }

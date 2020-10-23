@@ -211,6 +211,14 @@ namespace gridtools {
                         return req;
                     }
 
+                    template<typename CallBack>
+                    request_cb_type send(any_libfabric_message& msg, rank_type dst, tag_type tag, CallBack&& callback) {
+std::cout << "Using reference send function " << std::endl;
+                        GHEX_CHECK_CALLBACK_F(message_type,rank_type,tag_type)
+                        using V = typename std::remove_reference_t<any_libfabric_message>::value_type;
+                        return send(message_type{libfabric_ref_message<V>{msg.data(),msg.size(), msg.m_holder.m_region}}, dst, tag, std::forward<CallBack>(callback));
+                    }
+
                     /** @brief send a message and get notified with a callback when the communication has finished.
                       * The ownership of the message is transferred to this communicator and it is safe to destroy the
                       * message at the caller's site.
