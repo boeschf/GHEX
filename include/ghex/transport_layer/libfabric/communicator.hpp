@@ -122,8 +122,8 @@ namespace gridtools {
 
                     communicator_state(thread_token* t, struct fid_ep *endpoint, struct fid_domain *domain)
                     : m_token_ptr{t}
-                    , endpoint_(endpoint)
-                    , fabric_domain_(domain)
+                    , endpoint_{endpoint}
+                    , fabric_domain_{domain}
                     {
                         // only init the sender list once per thread
                         static thread_local std::atomic_flag initialized = ATOMIC_FLAG_INIT;
@@ -131,7 +131,7 @@ namespace gridtools {
                         //
                         for (std::size_t i = 0; i < 16; ++i)
                         {
-//                            add_sender_to_pool();
+                            add_sender_to_pool();
                         }
                     }
 
