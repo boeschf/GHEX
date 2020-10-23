@@ -26,12 +26,12 @@ namespace libfabric
     {
         scoped_lock(Mutex &m) : std::lock_guard<Mutex>(m)
         {
-            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating scoped_lock RAII")));
+            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating"), "scoped_lock RAII"));
         }
 
         ~scoped_lock()
         {
-            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Destroying scoped_lock RAII")));
+            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Destroying"), "scoped_lock RAII"));
         }
     };
 
@@ -40,17 +40,17 @@ namespace libfabric
     {
         unique_lock(Mutex &m) : std::unique_lock<Mutex>(m)
         {
-            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating unique_lock RAII")));
+            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating"), "unique_lock RAII"));
         }
 
         unique_lock(Mutex& m, std::try_to_lock_t t) : std::unique_lock<Mutex>(m, t)
         {
-            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating unique_lock try_to_lock_t RAII")));
+            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating"), "unique_lock try_to_lock_t RAII"));
         }
 
         ~unique_lock()
         {
-            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Destroying unique_lock RAII")));
+            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Destroying"), "unique_lock RAII"));
         }
     };
 
@@ -59,27 +59,27 @@ namespace libfabric
     {
         shared_lock(Mutex &m) : std::shared_lock<Mutex>(m)
         {
-            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating shared_lock RAII")));
+            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating"), "shared_lock RAII"));
         }
 
         shared_lock(Mutex& m, std::defer_lock_t t) : std::shared_lock<Mutex>(m, t)
         {
-            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating shared_lock defer_lock_t RAII")));
+            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating"), "shared_lock defer_lock_t RAII"));
         }
 
         shared_lock(Mutex& m, std::try_to_lock_t t) : std::shared_lock<Mutex>(m, t)
         {
-            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating shared_lock try_to_lock_t RAII")));
+            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating"), "shared_lock try_to_lock_t RAII"));
         }
 
         shared_lock(Mutex& m, std::adopt_lock_t t) : std::shared_lock<Mutex>(m, t)
         {
-            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating shared_lock adopt_lock_t RAII")));
+            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Creating"), "shared_lock adopt_lock_t RAII"));
         }
 
         ~shared_lock()
         {
-            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Destroying shared_lock RAII")));
+            GHEX_DP_LAZY(rdma_deb, rdma_deb.debug(hpx::debug::str<>("Destroying"), "shared_lock RAII"));
         }
     };
 #else

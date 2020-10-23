@@ -201,13 +201,13 @@ namespace rma
                 if (region->get_temp_region()) {
                     --temp_regions;
                     pool_deb.trace(hpx::debug::str<>("Deallocating")
-                        , "temp region", *region
+                        , "TEMP", *region
                         , "temp regions" , hpx::debug::dec<>(temp_regions));
                 }
                 else if (region->get_user_region()) {
                     --user_regions;
                     pool_deb.trace(hpx::debug::str<>("Deleting")
-                        , "(user region)", *region
+                        , "USER", *region
                         , "user regions" , hpx::debug::dec<>(user_regions));
                 }
                 delete region;
@@ -248,7 +248,7 @@ namespace rma
             region->allocate(protection_domain_, length);
             ++temp_regions;
             pool_deb.trace(hpx::debug::str<>("Allocating")
-                , "temp region", *region
+                , "TEMP", *region
                 , "temp regions" , hpx::debug::dec<>(temp_regions));
             return region;
         }
@@ -262,7 +262,7 @@ namespace rma
             region->set_temp_region();
             ++temp_regions;
             pool_deb.trace(hpx::debug::str<>("Registered")
-                , "temp region", *region
+                , "TEMP", *region
                 , "temp regions" , hpx::debug::dec<>(temp_regions));
             return region;
         }

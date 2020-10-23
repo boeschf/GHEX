@@ -170,15 +170,15 @@ namespace gridtools {
                                               , "(-- stack sender)"
                                               , hpx::debug::ptr(s)
                                               /*, hpx::debug::dec<>(senders_in_use_)*/));
-                                std::cout << "Pushing sender (PPH) " << s << std::endl;
+std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushing sender (PPH) " << s << std::endl;
                                 senders()->push(s);
-                                std::cout << "Pushed sender " << senders()->size() << " " << s << std::endl;
+std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushed sender " << senders()->size() << " " << s << std::endl;
                                 // trigger_pending_work();
                             };
                         // put the new sender on the free list
-                        std::cout << "Pushing sender " << snd << std::endl;
+std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushing sender " << snd << std::endl;
                         senders()->push(snd);
-                        std::cout << "Pushed sender " << senders()->size() << " " << snd << std::endl;
+std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushed sender " << senders()->size() << " " << snd << std::endl;
                     }
 
                     sender* get_sender(int rank)
@@ -395,7 +395,7 @@ std::cout << "Using reference send function " << std::endl;
                         std::shared_ptr<context_info> result(new context_info{false, nullptr});
                         request req{controller, request_kind::recv, std::move(result)};
 
-                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send (callback)")
+                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send any"), "(callback)"
                          , "thisrank", hpx::debug::dec<>(rank())
                          , "rank", hpx::debug::dec<>(dst)
                          , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
@@ -418,9 +418,11 @@ std::cout << "Using reference send function " << std::endl;
                              ]() mutable
                         {
                             p->m_ready = true;
-                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send (callback)")
+                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send any"),"(callback lambda)"
                                  , "F(set)", hpx::debug::dec<>(dst)));
                             callback(std::move(msg), dst, tag);
+                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send any"),"(callback lambda)"
+                                 , "done", hpx::debug::dec<>(dst)));
                         };
 
                         // perform a send with the callback for when transfer is complete

@@ -32,7 +32,7 @@ namespace detail
     // domain used to limit access.
     // Code that does not 'know' which parcelport is being used, must use
     // the memory_region class to manage regions, but parcelport code
-    // may use the correcft type for the parcelport in question.
+    // may use the correct type for the parcelport in question.
     // --------------------------------------------------------------------
     template <typename RegionProvider>
     class memory_region_impl : public memory_region
