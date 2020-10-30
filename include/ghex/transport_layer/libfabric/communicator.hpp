@@ -16,7 +16,7 @@
 #include <ghex/transport_layer/shared_message_buffer.hpp>
 #include <ghex/transport_layer/libfabric/controller.hpp>
 #include <ghex/transport_layer/libfabric/future.hpp>
-#include <ghex/transport_layer/libfabric/sender.hpp>
+//#include <ghex/transport_layer/libfabric/sender.hpp>
 
 namespace gridtools {
     namespace ghex {
@@ -117,114 +117,88 @@ namespace gridtools {
                     //
 
                     // We maintain a list of senders that are being used
-                    using sender_list = std::stack<sender*>;
-                    std::atomic<unsigned int> senders_in_use_;
+//                    using sender_list = std::stack<sender*>;
+//                    std::atomic<unsigned int> senders_in_use_;
 
                     communicator_state(thread_token* t, struct fid_ep *endpoint, struct fid_domain *domain)
                     : m_token_ptr{t}
                     , endpoint_{endpoint}
                     , fabric_domain_{domain}
                     {
-                        // only init the sender list once per thread
-                        static thread_local std::atomic_flag initialized = ATOMIC_FLAG_INIT;
-                        if (initialized.test_and_set()) return;
-                        //
-                        for (std::size_t i = 0; i < 16; ++i)
-                        {
-                            add_sender_to_pool();
-                        }
+//                        // only init the sender list once per thread
+//                        static thread_local std::atomic_flag initialized = ATOMIC_FLAG_INIT;
+//                        if (initialized.test_and_set()) return;
+//                        //
+//                        for (std::size_t i = 0; i < 16; ++i)
+//                        {
+//                            add_sender_to_pool();
+//                        }
                     }
 
                     ~communicator_state()
                     {
                         // clear senders list
-                        int i = 0;
-                        bool ok = true;
-                        sender* snd = nullptr;
-                        while (!senders()->empty()) {
-                            snd = senders()->top();
-                            std::cout << "Deleting sender " << i++ << " " << senders()->size() << " " << snd << std::endl;
-                            delete snd;
-                            senders()->pop();
-                            std::cout << "Deleted sender " << senders()->size() << " " << snd << std::endl;
-                        }
+//                        int i = 0;
+//                        bool ok = true;
+//                        sender* snd = nullptr;
+//                        while (!senders()->empty()) {
+//                            snd = senders()->top();
+////std::cout << "Deleting sender " << i++ << " " << senders()->size() << " " << snd << std::endl;
+//                            delete snd;
+//                            senders()->pop();
+////std::cout << "Deleted sender " << senders()->size() << " " << snd << std::endl;
+//                        }
                     }
 
-                    // --------------------------------------------------
-                    static sender_list *senders() {
-                        static thread_local std::unique_ptr<sender_list> instance(new sender_list());
-                        return instance.get();
-                    }
+//                    // --------------------------------------------------
+//                    static sender_list *senders() {
+//                        static thread_local std::unique_ptr<sender_list> instance(new sender_list());
+//                        return instance.get();
+//                    }
 
                     // --------------------------------------------------------------------
                     // return a sender object
                     // --------------------------------------------------------------------
                     void add_sender_to_pool() {
-                        sender *snd = new sender(endpoint_, fabric_domain_);
-                        // after a sender has been used, it's postprocess handler
-                        // is called, this returns it to the free list
-                        snd->postprocess_handler_ = [this](sender* s)
-                            {
-            //                    --senders_in_use_;
-                                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("senders in use")
-                                              , "(-- stack sender)"
-                                              , hpx::debug::ptr(s)
-                                              /*, hpx::debug::dec<>(senders_in_use_)*/));
-std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushing sender (PPH) " << s << std::endl;
-                                senders()->push(s);
-std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushed sender " << senders()->size() << " " << s << std::endl;
-                                // trigger_pending_work();
-                            };
-                        // put the new sender on the free list
-std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushing sender " << snd << std::endl;
-                        senders()->push(snd);
-std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushed sender " << senders()->size() << " " << snd << std::endl;
+//                        sender *snd = new sender(endpoint_, fabric_domain_);
+//                        // after a sender has been used, it's postprocess handler
+//                        // is called, this returns it to the free list
+//                        snd->postprocess_handler_ = [this](sender* s)
+//                            {
+//            //                    --senders_in_use_;
+//                                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("senders in use")
+//                                              , "(-- stack sender)"
+//                                              , hpx::debug::ptr(s)
+//                                              /*, hpx::debug::dec<>(senders_in_use_)*/));
+////std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushing sender (PPH) " << s << std::endl;
+//                                senders()->push(s);
+////std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushed sender " << senders()->size() << " " << s << std::endl;
+//                                // trigger_pending_work();
+//                            };
+//                        // put the new sender on the free list
+////std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushing sender " << snd << std::endl;
+//                        senders()->push(snd);
+////std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushed sender " << senders()->size() << " " << snd << std::endl;
                     }
 
-                    sender* get_sender(int rank)
-                    {
-                        sender* snd = nullptr;
-                        // pop an sender from the free list, if that fails, create a new one
-                        if (senders()->empty())
-                        {
-                            add_sender_to_pool();
-                        }
-                        snd = senders()->top();
-                        senders()->pop();
-                        std::cout << "Popped sender " << " " << snd << std::endl;
-
-            //            ++senders_in_use_;
-
-                        // debug info only
-
-//                        if (com_deb.is_enabled()) {
-//                            libfabric::locality addr;
-//                            addr.set_fi_address(fi_addr_t(rank));
-//                            std::size_t addrlen = libfabric::locality_defs::array_size;
-//                            int ret = fi_av_lookup(av_, fi_addr_t(rank),
-//                                                   addr.fabric_data_writable(), &addrlen);
-//                            if ((ret == 0) && (addrlen==libfabric::locality_defs::array_size)) {
-//                                GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("get_sender")
-//                                    , hpx::debug::ptr(snd)
-//                                    , "from", iplocality(here_)
-//                                    , "to" , iplocality(addr)
-//                                    , "dest rank", hpx::debug::hex<4>(rank)
-//                                    , "fi_addr (rank)" , hpx::debug::hex<4>(fi_addr_t(rank))
-//                                    , "senders in use (get_sender)"
-//                                    /*, hpx::debug::dec<>(senders_in_use_)*/));
-//                            }
-//                            else {
-//                                throw std::runtime_error(
-//                                    "get_sender : address vector traversal lookup failure");
-//                            }
+//                    sender* get_sender(int rank)
+//                    {
+//                        sender* snd = nullptr;
+//                        // pop an sender from the free list, if that fails, create a new one
+//                        if (senders()->empty())
+//                        {
+//                            add_sender_to_pool();
 //                        }
+//                        snd = senders()->top();
+//                        senders()->pop();
+////                        std::cout << "Popped sender " << " " << snd << std::endl;
 
-                        // set the sender destination address/offset in AV table
-                        snd->dst_addr_ = fi_addr_t(rank);
-                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("message_region_owned_ = false")));
+//                        // set the sender destination address/offset in AV table
+////                        snd->dst_addr_ = fi_addr_t(rank);
+//                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("message_region_owned_ = false")));
 
-                        return snd;
-                    }
+//                        return snd;
+//                    }
 
                     progress_status progress() {
                         return {
@@ -316,6 +290,77 @@ std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushed sender "
                                 (std::uint64_t(tag & 0xFFFFFFFF));
                     }
 
+
+                    // --------------------------------------------------------------------
+                    // this takes a pinned memory region and sends it
+                    void send_tagged_region(region_type *send_region, fi_addr_t dst_addr_, uint64_t tag_, void *ctxt)
+                    {
+                        [[maybe_unused]] auto scp = ghex::com_deb.scope(__func__);
+
+                        // increment counter of total messages sent
+//                        ++sends_posted_;
+
+                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("message buffer"), *send_region));
+
+                        bool ok = false;
+                        while (!ok) {
+                            ssize_t ret;
+                            ret = fi_tsend(m_state->endpoint_,
+                                           send_region->get_address(),
+                                           send_region->get_message_length(),
+                                           send_region->get_local_key(),
+                                           dst_addr_, tag_, ctxt);
+                            if (ret == 0) {
+                                ok = true;
+                            }
+                            else if (ret == -FI_EAGAIN) {
+                                com_deb.error("Reposting fi_sendv / fi_tsendv");
+                            }
+                            else if (ret == -FI_ENOENT) {
+                                // if a node has failed, we can recover
+                                // @TODO : put something better here
+                                com_deb.error("No destination endpoint, terminating.");
+                                std::terminate();
+                            }
+                            else if (ret)
+                            {
+                                throw fabric_error(int(ret), "fi_sendv / fi_tsendv");
+                            }
+                        }
+                    }
+
+                    // --------------------------------------------------------------------
+                    // the receiver posts a single receive buffer to the queue, attaching
+                    // itself as the context, so that when a message is received
+                    // the owning receiver is called to handle processing of the buffer
+                    void receive_tagged_region(region_type *recv_region, fi_addr_t src_addr_, uint64_t tag_, void *ctxt)
+                    {
+                        [[maybe_unused]] auto scp = com_deb.scope(__func__);
+
+                        // this should never actually return true and yield/sleep
+                        bool ok = false;
+                        while(!ok) {
+                            uint64_t ignore = 0;
+                            ssize_t ret = fi_trecv(m_state->endpoint_,
+                                recv_region->get_address(),
+                                recv_region->get_size(),
+                                recv_region->get_local_key(),
+                                src_addr_, tag_, ignore, ctxt);
+                            if (ret ==0) {
+                                ok = true;
+                            }
+                            else if (ret == -FI_EAGAIN)
+                            {
+                                com_deb.error("reposting fi_recv\n");
+                                std::this_thread::sleep_for(std::chrono::microseconds(1));
+                            }
+                            else if (ret != 0)
+                            {
+                                throw fabric_error(int(ret), "pp_post_rx");
+                            }
+                        }
+                    }
+
                     /** @brief send a message. The message must be kept alive by the caller until the communication is
                      * finished.
                      * @tparam Message a message type
@@ -332,12 +377,26 @@ std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushed sender "
 
                         // get main libfabric controller
                         auto controller = m_shared_state->m_controller;
-                        // get a sender
-                        ghex::tl::libfabric::sender *sndr = m_state->get_sender(dst);
 
                         // create a request
-                        std::shared_ptr<context_info> result(new context_info{false, nullptr});
-                        request req{controller, request_kind::recv, std::move(result)};
+                        request req{
+                            controller,
+                            request_kind::send,
+                            std::shared_ptr<context_info>(
+                                        new context_info{false,
+                                                         m_state->endpoint_,
+                                                         nullptr,
+                                                         libfabric_region_holder()})
+                        };
+
+                        req.m_lf_ctxt->user_cb_ = [p=req.m_lf_ctxt]() {
+                            // cleanup temp region if necessary
+                            p->message_holder_.clear();
+                            p->message_region_ = nullptr;
+                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send (future)"), "F(set)"));
+                            p->m_ready = true;
+                        };
+                        req.m_lf_ctxt->init_message_data(msg, stag);
 
                         GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send (future)")
                             , "thisrank", hpx::debug::dec<>(rank())
@@ -345,17 +404,11 @@ std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushed sender "
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
                             , "cxt", hpx::debug::hex<8>(m_shared_state->m_context)
                             , "stag", hpx::debug::hex<16>(stag)
-                            , "sndr", hpx::debug::ptr(sndr)
                             , "addr", hpx::debug::ptr(msg.data())
                             , "size", hpx::debug::hex<6>(msg.size())));
 
-                        sndr->init_message_data(msg, stag);
-
                         // async send, with callback to set the future ready when transfer is complete
-                        sndr->send_tagged_msg([p=req.m_lf_ctxt]() {
-                            p->m_ready = true;
-                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send (future)"), "F(set)"));
-                        });
+                        send_tagged_region(req.m_lf_ctxt->message_region_, fi_addr_t(dst), stag, req.m_lf_ctxt.get());
 
                         // future constructor will be called with request as param
                         return req;
@@ -363,7 +416,9 @@ std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushed sender "
 
                     template<typename CallBack>
                     request_cb_type send(any_libfabric_message& msg, rank_type dst, tag_type tag, CallBack&& callback) {
-std::cout << "Using reference send function " << std::endl;
+std::cout << "Using reference send function "
+          << "Sizeof context_info == " << sizeof(context_info)
+          << std::endl;
                         GHEX_CHECK_CALLBACK_F(message_type,rank_type,tag_type)
                         using V = typename std::remove_reference_t<any_libfabric_message>::value_type;
                         return send(message_type{libfabric_ref_message<V>{msg.data(),msg.size(), msg.m_holder.m_region}}, dst, tag, std::forward<CallBack>(callback));
@@ -388,12 +443,39 @@ std::cout << "Using reference send function " << std::endl;
 
                         // get main libfabric controller
                         auto controller = m_shared_state->m_controller;
-                        // get a sender
-                        ghex::tl::libfabric::sender *sndr = m_state->get_sender(dst);
 
                         // create a request
-                        std::shared_ptr<context_info> result(new context_info{false, nullptr});
-                        request req{controller, request_kind::recv, std::move(result)};
+                        request req{
+                            controller,
+                            request_kind::send,
+                            std::shared_ptr<context_info>(
+                                        new context_info{false,
+                                                         m_state->endpoint_,
+                                                         nullptr,
+                                                         libfabric_region_holder()})
+                        };
+
+                        req.m_lf_ctxt->init_message_data(msg, stag);
+
+                        // now move message into callback
+                        req.m_lf_ctxt->user_cb_ = [
+                             p        = req.m_lf_ctxt,
+                             msg      = std::move(msg),
+                             callback = std::forward<CallBack>(callback),
+                             dst, tag
+                             ]() mutable
+                        {
+                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send any"),"(callback lambda)"
+                                 , "F(set)", hpx::debug::dec<>(dst)));
+                            callback(std::move(msg), dst, tag);
+                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send any"),"(callback lambda)"
+                                 , "done", hpx::debug::dec<>(dst)));
+                            // cleanup temp region if necessary
+                            p->message_holder_.clear();
+                            p->message_region_ = nullptr;
+                            p->m_ready = true;
+                        };
+
 
                         GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send any"), "(callback)"
                          , "thisrank", hpx::debug::dec<>(rank())
@@ -401,32 +483,12 @@ std::cout << "Using reference send function " << std::endl;
                          , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
                          , "cxt", hpx::debug::hex<8>(m_shared_state->m_context)
                          , "stag", hpx::debug::hex<16>(stag)
-                         , "sndr", hpx::debug::ptr(sndr)
                          , "addr", hpx::debug::ptr(msg.data())
                          , "size", hpx::debug::hex<6>(msg.size())));
 
-                        // so that we can move the message int the callback,
-                        // first extract any rma info we need
-                        sndr->init_message_data(msg, stag);
-
-                        // now move message into callback
-                        auto lambda = [
-                             p        = req.m_lf_ctxt,
-                             msg      = std::move(msg),
-                             callback = std::forward<CallBack>(callback),
-                             dst, tag
-                             ]() mutable
-                        {
-                            p->m_ready = true;
-                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send any"),"(callback lambda)"
-                                 , "F(set)", hpx::debug::dec<>(dst)));
-                            callback(std::move(msg), dst, tag);
-                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send any"),"(callback lambda)"
-                                 , "done", hpx::debug::dec<>(dst)));
-                        };
-
                         // perform a send with the callback for when transfer is complete
-                        sndr->send_tagged_msg(std::move(lambda));
+                        send_tagged_region(req.m_lf_ctxt->message_region_, fi_addr_t(dst), stag, req.m_lf_ctxt.get());
+
                         return req;
                     }
 
@@ -450,16 +512,17 @@ std::cout << "Using reference send function " << std::endl;
                         auto controller = m_shared_state->m_controller;
 
                         // create a request
-                        std::shared_ptr<context_info> result(new context_info{false, nullptr});
-                        request req{controller, request_kind::recv, std::move(result)};
+                        request req{
+                            controller,
+                            request_kind::recv,
+                            std::shared_ptr<context_info>(
+                                        new context_info{false,
+                                                         m_state->endpoint_,
+                                                         nullptr,
+                                                         libfabric_region_holder()})
+                        };
 
-                        // get a receiver object (tagged, with a callback)
-                        ghex::tl::libfabric::receiver *rcv =
-                                controller->get_expected_receiver(src);
-
-                        // to support cancellation, we pass the context pointer (receiver)
-                        // into the future shared state
-                        req.m_lf_ctxt->m_lf_context = rcv;
+                        req.m_lf_ctxt->init_message_data(msg, stag);
 
                         GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (future)")
                             , "thisrank", hpx::debug::dec<>(rank())
@@ -467,77 +530,18 @@ std::cout << "Using reference send function " << std::endl;
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
                             , "cxt", hpx::debug::hex<8>(m_shared_state->m_context)
                             , "stag", hpx::debug::hex<16>(stag)
-                            , "recv", hpx::debug::ptr(rcv)
                             , "addr", hpx::debug::ptr(msg.data())
                             , "size", hpx::debug::hex<6>(msg.size())));
 
-                        rcv->init_message_data(msg, stag);
-
-                        auto lambda = [p=req.m_lf_ctxt](){
-                            p->m_ready = true;
+                        req.m_lf_ctxt->user_cb_ = [p=req.m_lf_ctxt](){
                             GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (future)"), "F(set)"));
+                            p->m_ready = true;
                         };
 
-                        rcv->receive_tagged_msg(std::move(lambda));
+                        receive_tagged_region(req.m_lf_ctxt->message_region_, fi_addr_t(src), stag, req.m_lf_ctxt.get());
+
                         return req;
                     }
-
-//                    template<typename Msg, typename CallBack>
-//                    request_cb_type recv(Msg &&msg, rank_type src, tag_type tag, CallBack&& callback)
-//                    {
-//                        [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(callback)");
-//                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("map contents")
-//                                            , GHEX_DP_LAZY(m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map(), com_deb));
-
-//                        std::uint64_t stag = make_tag64(tag);
-
-//                        // main libfabric controller
-//                        auto controller = m_shared_state->m_controller;
-
-//                        // create a request
-//                        std::shared_ptr<context_info> result(new context_info{false, nullptr});
-//                        request req{controller, request_kind::recv, std::move(result)};
-
-//                        // get a receiver object (tagged, with a callback)
-//                        ghex::tl::libfabric::receiver *rcv =
-//                                controller->get_expected_receiver(src);
-
-//                        // to support cancellation, we pass the context pointer (receiver)
-//                        // into the future shared state
-//                        req.m_lf_ctxt->m_lf_context = rcv;
-
-//                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (callback)")
-//                            , "thisrank", hpx::debug::dec<>(rank())
-//                            , "rank", hpx::debug::dec<>(src)
-//                            , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
-//                            , "cxt", hpx::debug::hex<8>(m_shared_state->m_context)
-//                            , "stag", hpx::debug::hex<16>(stag)
-//                            , "recv", hpx::debug::ptr(rcv)
-//                            , "addr", hpx::debug::ptr(msg.data())
-//                            , "size", hpx::debug::hex<6>(msg.size()));
-
-//                        // so that we can move the message int the callback,
-//                        // first extract any rma info we need
-//                        rcv->init_message_data(msg, stag);
-
-//                        // now move message into callback
-//                        auto lambda = [
-//                             p        = req.m_lf_ctxt,
-//                             msg      = std::forward<Msg>(msg),
-//                             callback = std::forward<CallBack>(callback),
-//                             src, tag
-//                             ]() mutable
-//                        {
-//                            p->m_ready = true;
-//                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (callback)")
-//                                 , "F(set)", hpx::debug::dec<>(src));
-//                            callback(std::move(msg), src, tag);
-//                        };
-
-//                        // perform a send with the callback for when transfer is complete
-//                        rcv->receive_tagged_msg(std::move(lambda));
-//                        return req;
-//                    }
 
                     template<typename CallBack>
                     request_cb_type recv(any_libfabric_message &&msg, rank_type src, tag_type tag, CallBack&& callback)
@@ -552,16 +556,17 @@ std::cout << "Using reference send function " << std::endl;
                         auto controller = m_shared_state->m_controller;
 
                         // create a request
-                        std::shared_ptr<context_info> result(new context_info{false, nullptr});
-                        request req{controller, request_kind::recv, std::move(result)};
+                        request req{
+                            controller,
+                            request_kind::recv,
+                            std::shared_ptr<context_info>(
+                                        new context_info{false,
+                                                         m_state->endpoint_,
+                                                         nullptr,
+                                                         libfabric_region_holder()})
+                        };
 
-                        // get a receiver object (tagged, with a callback)
-                        ghex::tl::libfabric::receiver *rcv =
-                                controller->get_expected_receiver(src);
-
-                        // to support cancellation, we pass the context pointer (receiver)
-                        // into the future shared state
-                        req.m_lf_ctxt->m_lf_context = rcv;
+                        req.m_lf_ctxt->init_message_data(msg, stag);
 
                         GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (callback)")
                             , "thisrank", hpx::debug::dec<>(rank())
@@ -569,30 +574,25 @@ std::cout << "Using reference send function " << std::endl;
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
                             , "cxt", hpx::debug::hex<8>(m_shared_state->m_context)
                             , "stag", hpx::debug::hex<16>(stag)
-                            , "recv", hpx::debug::ptr(rcv)
                             , "addr", hpx::debug::ptr(msg.data())
                             , "size", hpx::debug::hex<6>(msg.size())));
 
-                        // so that we can move the message int the callback,
-                        // first extract any rma info we need
-                        rcv->init_message_data(msg, stag);
-
                         // now move message into callback
-                        auto lambda = [
+                        req.m_lf_ctxt->user_cb_ = [
                              p        = req.m_lf_ctxt,
                              msg      = std::move(msg), // std::forward<Msg>(msg)
                              callback = std::forward<CallBack>(callback),
                              src, tag
                              ]() mutable
                         {
-                            p->m_ready = true;
                             GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (callback)")
                                  , "F(set)", hpx::debug::dec<>(src)));
                             callback(std::move(msg), src, tag);
+                            p->m_ready = true;
                         };
 
                         // perform a send with the callback for when transfer is complete
-                        rcv->receive_tagged_msg(std::move(lambda));
+                        receive_tagged_region(req.m_lf_ctxt->message_region_, fi_addr_t(src), stag, req.m_lf_ctxt.get());
                         return req;
                     }
 

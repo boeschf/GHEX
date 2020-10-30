@@ -14,7 +14,6 @@
 #include "./communicator.hpp"
 #include "../communicator.hpp"
 #include "./controller.hpp"
-#include "./receiver.hpp"
 
 namespace gridtools {
     namespace ghex {
