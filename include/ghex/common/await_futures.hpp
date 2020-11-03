@@ -16,67 +16,56 @@
 #include <algorithm>
 
 namespace gridtools {
+namespace ghex {
 
-    namespace ghex {
-        
-        /** @brief wait for all futures in a range to finish and call 
-          * a continuation with the future's value as argument. */
-        template<typename Future, typename Continuation>
-        void await_futures(std::vector<Future>& range, Continuation&& cont)
+/** @brief wait for all futures in a range to finish and call 
+  * a continuation with the future's value as argument. */
+template<typename Future, typename Continuation>
+inline void await_futures(std::vector<Future>& range, Continuation&& cont)
+{
+    static thread_local std::vector<int> index_list;
+    index_list.resize(range.size());
+    std::iota(index_list.begin(), index_list.end(), 0);
+    const auto begin = index_list.begin();
+    auto end = index_list.end();
+    while (begin != end)
+    {
+        end = std::remove_if(begin, end, [&range, cont = std::forward<Continuation>(cont)](int idx)
         {
-            std::vector<int> index_list(range.size());
-            std::iota(index_list.begin(), index_list.end(), 0);
-            while (index_list.size())
+            if (range[idx].test())
             {
-                index_list.resize(
-                        std::remove_if(index_list.begin(), index_list.end(),
-                            [&range, cont = std::forward<Continuation>(cont)](int idx)
-                            {
-                                if (range[idx].test())
-                                {
-                                    cont(range[idx].get());
-                                    return true;
-                                } else return false;
-                            })
-                        - index_list.begin());
-            }
-        }
-        
-        /** @brief wait for all requests in a range to finish **/
-        template<typename Request>
-        void await_requests(std::vector<Request>& range)
-        {
-            std::vector<int> index_list(range.size());
-            std::iota(index_list.begin(), index_list.end(), 0);
-            while (index_list.size())
-            {
-                index_list.resize(
-                        std::remove_if(index_list.begin(), index_list.end(),
-                            [&range](int idx) { return range[idx].test(); })
-                        - index_list.begin());
-            }
-        }
+                cont(range[idx].get());
+                return true;
+            } else return false;
+        });
+    }
+}
 
-        /** @brief wait for all requests in a range to finish and call 
-          * a progress function regularly. */
-        template<typename Request, typename Progress>
-        void await_requests(std::vector<Request>& range, Progress&& progress)
-        {
-            std::vector<int> index_list(range.size());
-            std::iota(index_list.begin(), index_list.end(), 0);
-            while (index_list.size())
-            {
-                progress();
-                index_list.resize(
-                        std::remove_if(index_list.begin(), index_list.end(),
-                            [&range](int idx) { return range[idx].test(); })
-                        - index_list.begin());
-            }
-        }
+/** @brief wait for all requests in a range to finish and call 
+  * a progress function regularly. */
+template<typename Request, typename Progress>
+inline void await_requests(std::vector<Request>& range, Progress&& progress)
+{
+    static thread_local std::vector<int> index_list;
+    index_list.resize(range.size());
+    std::iota(index_list.begin(), index_list.end(), 0);
+    const auto begin = index_list.begin();
+    auto end = index_list.end();
+    while (begin != end)
+    {
+        progress();
+        end = std::remove_if(begin, end, [&range](int idx) { return range[idx].test(); });
+    }
+}
 
-    } // namespace ghex
+/** @brief wait for all requests in a range to finish **/
+template<typename Request>
+inline void await_requests(std::vector<Request>& range)
+{
+    await_requests(range, [](){});
+}
 
+} // namespace ghex
 } // namespace gridtools
 
 #endif // INCLUDED_GHEX_COMMON_AWAIT_FUTURES_HPP
-
