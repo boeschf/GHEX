@@ -61,6 +61,7 @@ namespace ghex {
 // for each grid type in ghex. So far only regular grids are supported.
 //
 
+#define GHEX_BULK_UNIQUE_TAGS
 
 // type erased bulk communication object
 // can be used for storing bulk communication objects

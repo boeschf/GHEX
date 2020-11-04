@@ -39,7 +39,7 @@ struct request_cache
     status progress()
     {
         const auto s = m_outstanding_reqs.size();
-        auto end = std::remove_if(m_outstanding_reqs.begin(), m_outstanding_reqs.end(),
+        const auto end = std::remove_if(m_outstanding_reqs.begin(), m_outstanding_reqs.end(),
             [](request_header* req)
             {
                 const bool ret = (UCS_INPROGRESS != ucp_request_check_status(req->m_ucx_request));
@@ -53,110 +53,36 @@ struct request_cache
     }
 };
 
-
-class base_state
-{
-protected:
-    worker m_worker;
-    request_cache m_request_cache;
-
-    base_state(ucp_context_h context)
-    : m_worker(context)
-    {}
-
-    auto size() const noexcept { return m_request_cache.size(); }
-
-    auto progress()
-    {
-        if (size()) m_worker.progress();
-        return m_request_cache.progress();
-    }
-            
-    void register_request(request_header& req)
-    {
-        m_request_cache.add(req);
-    }    
-};
-
 class state;
 
 // non-copyable, non-movable
-class shared_state : public base_state
+class shared_state
 {
 public: // member types
-    using base = base_state;
     using rank_type = typename address_db_t::rank_type;
     using tag_type = typename address_db_t::tag_type;
+    using mutex_type = std::mutex;
+    using lock_type = std::lock_guard<mutex_type>;
 
     friend class state;
 
 private: // members
-    std::mutex m_request_cache_mutex;
+    worker m_worker;
     std::mutex m_worker_mutex;
 
 public: // ctors
-    shared_state(ucp_context_h context)
-    : base(context)
-    {}
-
+    shared_state(ucp_context_h context) : m_worker(context) {}
     shared_state(const shared_state&) = delete;
     shared_state(shared_state&&) = delete;
 
 public: // member functions
-    address_t address() const noexcept { return this->m_worker.address(); }
-    
-    auto progress() // overrides the base class' member function
-    {
-        // this is not protected by lock (but is read only)
-        if (base::size())
-        {
-            std::lock_guard<std::mutex> lock(m_worker_mutex);
-            m_worker.progress();
-        }
-        {
-            std::lock_guard<std::mutex> lock(m_request_cache_mutex);
-            return m_request_cache.progress();
-        }
-    }
-
-    void progress(request& req)
-    {
-        while(!m_worker_mutex.try_lock())
-        {
-            if (req.ready()) return;
-        }
-        m_worker.progress();
-        m_worker_mutex.unlock();
-        {
-            std::lock_guard<std::mutex> lock(m_request_cache_mutex);
-            m_request_cache.progress();
-        }
-    }
-
-    void register_request(request_header& req)
-    {
-        std::lock_guard<std::mutex> lock(m_request_cache_mutex);
-        base::register_request(req);
-    }
-
-    void cancel(request& req)
-    {
-        {
-            std::lock_guard<std::mutex> lock(m_worker_mutex);
-            ucp_request_cancel(this->m_worker.get(), req.data().get().m_ucx_request);
-        }
-        while(!req.ready()) progress();
-    }
-
-
-private: // implementation
+    address_t address() const noexcept { return m_worker.address(); }
 };
 
 // non-copyable, non-movable
-class state : public base_state
+class state
 {
 public: // member types
-    using base = base_state;
     using rank_type = typename address_db_t::rank_type;
     using tag_type = typename address_db_t::tag_type;
     using endpoint_cache_type = std::unordered_map<rank_type, endpoint_t>;
@@ -165,6 +91,8 @@ public: // member types
     using queue_type = cb::callback_queue<request, rank_type, tag_type>;
     using completion_type = cb::request;
     using progress_status = cb::progress_status;
+    using mutex_type = typename shared_state::mutex_type;
+    using lock_type = typename shared_state::lock_type;
 
     struct request_cb
     {
@@ -203,6 +131,9 @@ public: // member types
 
 private: // members
     pool_type m_pool;
+    worker m_worker;
+    request_cache m_send_request_cache;
+    request_cache m_recv_request_cache;
     address_db_t& m_address_db;
     shared_state* m_shared_state;
     endpoint_cache_type m_endpoint_cache;
@@ -218,8 +149,8 @@ private: // members
 
 public: // ctors
     state(address_db_t& db, ucp_context_h context, shared_state* shared, const mpi::rank_topology& t)
-    : base(context)
-    , m_pool(((context_request_size(context)+sizeof(request_header)+15)/16)*16)
+    : m_pool(((context_request_size(context)+sizeof(request_header)+15)/16)*16)
+    , m_worker(context)
     , m_address_db{db}
     , m_shared_state{shared}
     , m_rank{db.rank()}
@@ -235,12 +166,81 @@ public: // member functions
     rank_type size() const noexcept { return m_size; }
     address_t address() const noexcept { return m_shared_state->address(); }
 
+    auto progress_recvs()
+    {
+        if (m_recv_request_cache.size())
+        {
+            lock_type lk(m_shared_state->m_worker_mutex);
+            m_shared_state->m_worker.progress();
+        } 
+        return m_recv_request_cache.progress();
+    }
+
+    void progress_recvs(request& req)
+    {
+        do
+        {
+            if (req.ready()) return;
+        } 
+        while(!m_shared_state->m_worker_mutex.try_lock());
+        m_shared_state->m_worker.progress();
+        m_shared_state->m_worker_mutex.unlock();
+        m_recv_request_cache.progress();
+    }
+
+    auto progress_sends()
+    {
+        if (m_send_request_cache.size())
+            m_worker.progress();
+        return m_send_request_cache.progress();
+    }
+
+    void progress(request& req)
+    {
+        if (req.kind() == request_kind::send)
+        {
+            progress_sends();
+            if (req.ready()) return;
+            progress_recvs();
+        } 
+        else
+        {
+            progress_recvs(req);
+            if (req.ready()) return;
+            progress_sends();
+        }
+    }
+
+    progress_status progress() // overrides the base class' member function
+    {
+        // progress receives (shared worker)
+        /*const auto recv_stats =*/ progress_recvs();
+        // progress sends (thread local worker)
+        /*const auto send_stats =*/ progress_sends();
+        // progress callbacks (thread local queue)
+        const auto completed_send_callbacks = m_send_callback_queue.progress();
+        const auto completed_recv_callbacks = m_recv_callback_queue.progress();
+        return {
+            (int)(completed_send_callbacks + std::exchange(m_num_immediate_send_cbs, 0u)),
+            (int)(completed_recv_callbacks + std::exchange(m_num_immediate_recv_cbs, 0u)), 
+            (int)(std::exchange(m_num_cancels, 0u))
+        };
+    }
+
     // this function should only be called for recv requests
     void cancel(request& req)
     {
-        m_shared_state->cancel(req);
+        {
+            lock_type lk(m_shared_state->m_worker_mutex);
+            ucp_request_cancel(m_shared_state->m_worker.get(), req.data().get().m_ucx_request);
+        } 
+        while(!req.ready())
+        {
+            progress_recvs();
+        }
         ++m_num_cancels;
     }
+
 
     template <typename Message>
     request send(const Message &msg, rank_type dst, tag_type tag)
@@ -263,7 +263,7 @@ public: // member functions
         }
         else if (UCS_INPROGRESS == ret)
         {
-            base::register_request(req.get());
+            m_send_request_cache.add(req.get());
         }
         else
         {
@@ -280,7 +280,7 @@ public: // member functions
         const auto rtag = ((std::uint_fast64_t)tag << 32) | (std::uint_fast64_t)(src);
         ucs_status_t ret;
         {
-            std::lock_guard<std::mutex> lock(m_shared_state->m_worker_mutex);
+            lock_type lk(m_shared_state->m_worker_mutex);
             ret = ucp_tag_recv_nbr(
                 m_shared_state->m_worker.get(),
                 msg.data(),
@@ -292,7 +292,7 @@ public: // member functions
         }
         if (ret==UCS_OK || ret==UCS_INPROGRESS)
         {
-            m_shared_state->register_request(req.get());
+            m_recv_request_cache.add(req.get());
         }
         else
         {
@@ -333,38 +333,6 @@ public: // member functions
         {
             return {&m_recv_callback_queue, m_recv_callback_queue.enqueue(
                 std::move(msg), src, tag, std::move(req), std::forward<CallBack>(callback))};
-        }
-    }
-
-    progress_status progress() // overrides the base class' member function
-    {
-        // progress receives (shared worker)
-        /*const auto recv_stats =*/ m_shared_state->progress();
-        // progress sends (thread local worker)
-        /*const auto send_stats =*/ base::progress();
-        // progress callbacks (thread local queue)
-        const auto completed_send_callbacks = m_send_callback_queue.progress();
-        const auto completed_recv_callbacks = m_recv_callback_queue.progress();
-        return {
-            (int)(completed_send_callbacks + std::exchange(m_num_immediate_send_cbs, 0u)),
-            (int)(completed_recv_callbacks + std::exchange(m_num_immediate_recv_cbs, 0u)), 
-            (int)(std::exchange(m_num_cancels, 0u))
-        };
-    }
-
-    void progress(request& req)
-    {
-        if (req.kind() == request_kind::send)
-        {
-            base::progress();
-            if (req.ready()) return;
-            m_shared_state->progress();
-        } 
-        else
-        {
-            m_shared_state->progress(req);
-            if (req.ready()) return;
-            base::progress();
         }
     }
 
