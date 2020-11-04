@@ -60,7 +60,7 @@ public: // ctors
     request_data(pool_type* pool)
     : m_pool{pool}
     , m_header{new(check_malloc(m_pool->malloc())) request_header(m_pool->get_requested_size())}
-    {}
+    { }
 
     request_data(const request_data&) = delete;
     request_data& operator=(const request_data&) = delete;
@@ -74,6 +74,10 @@ public: // ctors
 
     request_data& operator=(request_data&& other) noexcept
     {
+        if (m_pool && !m_detached)
+        {
+            m_pool->free(m_header); 
+        }
         m_pool = std::exchange(other.m_pool, nullptr);
         m_header = std::exchange(other.m_header, nullptr);
         m_detached = std::exchange(other.m_detached, false);
@@ -87,7 +91,13 @@ public: // ctors
         std::swap(m_detached, other.m_detached);
     }
 
-    ~request_data() { if (m_pool && !m_detached) m_pool->free(m_header); }
+    ~request_data()
+    { 
+        if (m_pool && !m_detached)
+        {
+            m_pool->free(m_header); 
+        }
+    }
 
     void detach() noexcept
     {
