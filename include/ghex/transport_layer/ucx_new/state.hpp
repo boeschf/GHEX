@@ -168,14 +168,25 @@ public: // member functions
     rank_type size() const noexcept { return m_size; }
     address_t address() const noexcept { return m_shared_state->address(); }
 
-    auto progress_recvs()
+    void progress_recvs()
+    //auto progress_recvs()
     {
-        if (m_recv_request_cache.size())
+        if (m_recv_request_cache.size()==0) return;
+        while(!m_shared_state->m_worker_mutex.try_lock())
+        {
+            m_recv_request_cache.progress();
+            if (m_recv_request_cache.size()==0) return;
+        }
+        m_shared_state->m_worker.progress();
+        m_shared_state->m_worker_mutex.unlock();
+        m_recv_request_cache.progress();
+
+        /*if (m_recv_request_cache.size())
         {
             lock_type lk(m_shared_state->m_worker_mutex);
             m_shared_state->m_worker.progress();
         } 
-        return m_recv_request_cache.progress();
+        return m_recv_request_cache.progress();*/
     }
 
     void progress_recvs(request& req)
@@ -183,6 +194,7 @@ public: // member functions
         while(!m_shared_state->m_worker_mutex.try_lock())
         {
             m_recv_request_cache.progress();
+            if (m_recv_request_cache.size()==0) return;
             if (req.ready()) return;
         }
         m_shared_state->m_worker.progress();
@@ -190,11 +202,13 @@ public: // member functions
         m_recv_request_cache.progress();
     }
 
-    auto progress_sends()
+    void progress_sends()
+    //auto progress_sends()
     {
         if (m_send_request_cache.size())
             m_worker.progress();
-        return m_send_request_cache.progress();
+        m_send_request_cache.progress();
+        //return m_send_request_cache.progress();
     }
 
     void progress(request& req)
