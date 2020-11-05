@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include "../util/pthread_spin_mutex.hpp"
 #include "./worker.hpp"
 
 namespace gridtools{
@@ -61,14 +62,15 @@ class shared_state
 public: // member types
     using rank_type = typename address_db_t::rank_type;
     using tag_type = typename address_db_t::tag_type;
-    using mutex_type = std::mutex;
+    //using mutex_type = std::mutex;
+    using mutex_type = pthread_spin::recursive_mutex;
     using lock_type = std::lock_guard<mutex_type>;
 
     friend class state;
 
 private: // members
     worker m_worker;
-    std::mutex m_worker_mutex;
+    mutex_type m_worker_mutex;
 
 public: // ctors
     shared_state(ucp_context_h context) : m_worker(context) {}
