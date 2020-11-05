@@ -62,8 +62,8 @@ class shared_state
 public: // member types
     using rank_type = typename address_db_t::rank_type;
     using tag_type = typename address_db_t::tag_type;
-    //using mutex_type = std::mutex;
-    using mutex_type = pthread_spin::recursive_mutex;
+    using mutex_type = std::mutex;
+    //using mutex_type = pthread_spin::recursive_mutex;
     using lock_type = std::lock_guard<mutex_type>;
 
     friend class state;
@@ -178,18 +178,6 @@ public: // member functions
         return m_recv_request_cache.progress();
     }
 
-    void progress_recvs(request& req)
-    {
-        do
-        {
-            if (req.ready()) return;
-        } 
-        while(!m_shared_state->m_worker_mutex.try_lock());
-        m_shared_state->m_worker.progress();
-        m_shared_state->m_worker_mutex.unlock();
-        m_recv_request_cache.progress();
-    }
-
     auto progress_sends()
     {
         if (m_send_request_cache.size())
@@ -207,13 +195,13 @@ public: // member functions
         } 
         else
         {
-            progress_recvs(req);
+            progress_recvs();
             if (req.ready()) return;
             progress_sends();
         }
     }
 
-    progress_status progress() // overrides the base class' member function
+    progress_status progress()
     {
         // progress receives (shared worker)
         /*const auto recv_stats =*/ progress_recvs();
