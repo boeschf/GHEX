@@ -178,6 +178,18 @@ public: // member functions
         return m_recv_request_cache.progress();
     }
 
+    void progress_recvs(request& req)
+    {
+        while(!m_shared_state->m_worker_mutex.try_lock())
+        {
+            m_recv_request_cache.progress();
+            if (req.ready()) return;
+        }
+        m_shared_state->m_worker.progress();
+        m_shared_state->m_worker_mutex.unlock();
+        m_recv_request_cache.progress();
+    }
+
     auto progress_sends()
     {
         if (m_send_request_cache.size())
@@ -195,7 +207,7 @@ public: // member functions
         } 
         else
         {
-            progress_recvs();
+            progress_recvs(req);
             if (req.ready()) return;
             progress_sends();
         }
