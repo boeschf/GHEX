@@ -383,7 +383,7 @@ namespace gridtools {
                             controller,
                             request_kind::send,
                             std::shared_ptr<context_info>(
-                                        new context_info{false,
+                                        new context_info{fi_context{}, false,
                                                          m_state->endpoint_,
                                                          nullptr,
                                                          libfabric_region_holder()})
@@ -416,9 +416,9 @@ namespace gridtools {
 
                     template<typename CallBack>
                     request_cb_type send(any_libfabric_message& msg, rank_type dst, tag_type tag, CallBack&& callback) {
-std::cout << "Using reference send function "
-          << "Sizeof context_info == " << sizeof(context_info)
-          << std::endl;
+//std::cout << "Using reference send function "
+//          << "Sizeof context_info == " << sizeof(context_info)
+//          << std::endl;
                         GHEX_CHECK_CALLBACK_F(message_type,rank_type,tag_type)
                         using V = typename std::remove_reference_t<any_libfabric_message>::value_type;
                         return send(message_type{libfabric_ref_message<V>{msg.data(),msg.size(), msg.m_holder.m_region}}, dst, tag, std::forward<CallBack>(callback));
@@ -449,7 +449,7 @@ std::cout << "Using reference send function "
                             controller,
                             request_kind::send,
                             std::shared_ptr<context_info>(
-                                        new context_info{false,
+                                        new context_info{fi_context{}, false,
                                                          m_state->endpoint_,
                                                          nullptr,
                                                          libfabric_region_holder()})
@@ -516,7 +516,7 @@ std::cout << "Using reference send function "
                             controller,
                             request_kind::recv,
                             std::shared_ptr<context_info>(
-                                        new context_info{false,
+                                        new context_info{fi_context{}, false,
                                                          m_state->endpoint_,
                                                          nullptr,
                                                          libfabric_region_holder()})
@@ -560,7 +560,7 @@ std::cout << "Using reference send function "
                             controller,
                             request_kind::recv,
                             std::shared_ptr<context_info>(
-                                        new context_info{false,
+                                        new context_info{fi_context{}, false,
                                                          m_state->endpoint_,
                                                          nullptr,
                                                          libfabric_region_holder()})

@@ -97,6 +97,9 @@ class controller;
 // we must also store the context used in libfabric, in case
 // a request is cancelled - fi_cancel(...) needs it
 struct context_info {
+    // libfabric requires some space for it's internal bookkeeping
+    // so the first member of thid struct must be fi_context
+    fi_context                      context_reserved_space;
     bool                            m_ready;
     fid_ep                         *endpoint_;
     region_type                    *message_region_;
