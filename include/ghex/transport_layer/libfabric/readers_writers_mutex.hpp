@@ -145,7 +145,7 @@ namespace local {
             rwl_barrier_();
             uint16_t val = atomic_xadd(&ticket.s.next, 1);
 
-            GHEX_DP_LAZY(RWL_deb, RWL_deb.debug(hpx::debug::str<>("lock wr")
+            GHEX_DP_ONLY(RWL_deb, debug(hpx::debug::str<>("lock wr")
                           , hpx::debug::ptr(this)
                           , "r" , hpx::debug::dec<4>(ticket.s.readers)
                           , "w" , hpx::debug::dec<4>(ticket.s.writers)
@@ -169,7 +169,7 @@ namespace local {
             // readlock incremented readers when it took the lock
             if (readlock_) {
                 atomic_inc(&ticket.s.writers);
-                GHEX_DP_LAZY(RWL_deb, RWL_deb.debug(hpx::debug::str<>("unlock rd")
+                GHEX_DP_ONLY(RWL_deb, debug(hpx::debug::str<>("unlock rd")
                               , hpx::debug::ptr(this)
                               , "r" , hpx::debug::dec<4>(ticket.s.readers)
                               , "w" , hpx::debug::dec<4>(ticket.s.writers)
@@ -181,7 +181,7 @@ namespace local {
                 readwrite_ticket new_ticket = ticket;
                 ++new_ticket.s.writers;
                 ++new_ticket.s.readers;
-                GHEX_DP_LAZY(RWL_deb, RWL_deb.debug(hpx::debug::str<>("unlock wr")
+                GHEX_DP_ONLY(RWL_deb, debug(hpx::debug::str<>("unlock wr")
                               , hpx::debug::ptr(this)
                               , "r" , hpx::debug::dec<4>(ticket.s.readers)
                               , "w" , hpx::debug::dec<4>(ticket.s.writers)
@@ -197,7 +197,7 @@ namespace local {
         //
         bool try_lock()
         {
-            GHEX_DP_LAZY(RWL_deb, RWL_deb.debug(hpx::debug::str<>("try  wr")
+            GHEX_DP_ONLY(RWL_deb, debug(hpx::debug::str<>("try  wr")
                           , hpx::debug::ptr(this)
                           , "r" , hpx::debug::dec<4>(ticket.s.readers)
                           , "w" , hpx::debug::dec<4>(ticket.s.writers)
@@ -236,7 +236,7 @@ namespace local {
             rwl_barrier_();
             uint16_t val = atomic_xadd(&ticket.s.next, 1);
 
-            GHEX_DP_LAZY(RWL_deb, RWL_deb.debug(hpx::debug::str<>("lock rd")
+            GHEX_DP_ONLY(RWL_deb, debug(hpx::debug::str<>("lock rd")
                           , hpx::debug::ptr(this)
                           , "r" , hpx::debug::dec<4>(ticket.s.readers)
                           , "w" , hpx::debug::dec<4>(ticket.s.writers)
@@ -268,7 +268,7 @@ namespace local {
         //
         bool try_lock_shared()
         {
-            GHEX_DP_LAZY(RWL_deb, RWL_deb.debug(hpx::debug::str<>("try  rd")
+            GHEX_DP_ONLY(RWL_deb, debug(hpx::debug::str<>("try  rd")
                           , hpx::debug::ptr(this)
                           , "r" , hpx::debug::dec<4>(ticket.s.readers)
                           , "w" , hpx::debug::dec<4>(ticket.s.writers)

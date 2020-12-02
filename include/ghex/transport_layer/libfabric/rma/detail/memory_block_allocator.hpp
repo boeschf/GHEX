@@ -32,7 +32,7 @@ namespace rma {
 namespace detail
 {
 
-    static hpx::debug::enable_print<false> mps_deb("MBALLOC");
+    static hpx::debug::enable_print<false> mbs_deb("MBALLOC");
 
     // --------------------------------------------------------------------
     // This is a simple class that implements only malloc and free but is
@@ -57,16 +57,16 @@ namespace detail
         {
             region_ptr region = std::make_shared<region_type>();
             region->allocate(pd, bytes);
-            mps_deb.trace(hpx::debug::str<>("Allocating")
+            GHEX_DP_ONLY(mbs_deb, trace(hpx::debug::str<>("Allocating")
                           , hpx::debug::hex<4>(bytes)
-                          , "chunk mallocator", *region);
+                          , "chunk mallocator", *region));
             return region;
         }
 
         // release a registered memory region
         static void free(region_ptr region) {
-            mps_deb.trace(hpx::debug::str<>("Freeing")
-                          , "chunk mallocator", *region);
+            GHEX_DP_ONLY(mbs_deb, trace(hpx::debug::str<>("Freeing")
+                          , "chunk mallocator", *region));
             region.reset();
         }
     };

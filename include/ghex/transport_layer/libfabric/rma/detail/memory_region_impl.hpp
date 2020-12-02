@@ -68,17 +68,17 @@ namespace detail
                 0, (uint64_t)address_, 0, &(region_), nullptr);
 
             if (ret) {
-                GHEX_DP_LAZY(memr_deb, memr_deb.debug(
+                GHEX_DP_ONLY(memr_deb, debug(
                     hpx::debug::str<>("error registering")
                     , hpx::debug::ptr(buffer) , hpx::debug::hex<6>(length)));
             }
             else {
-                memr_deb.trace(
+                GHEX_DP_ONLY(memr_deb, trace(
                     hpx::debug::str<>("OK registering")
                     , hpx::debug::ptr(buffer) , hpx::debug::ptr(address_)
                     , "desc" , hpx::debug::ptr(fi_mr_desc(region_))
                     , "rkey" , hpx::debug::ptr(fi_mr_key(region_))
-                    , "length" , hpx::debug::hex<6>(size_));
+                    , "length" , hpx::debug::hex<6>(size_)));
             }
         }
 
@@ -89,8 +89,8 @@ namespace detail
             // Allocate storage for the memory region.
             void *buffer = new char[length];
             if (buffer != nullptr) {
-                memr_deb.trace(hpx::debug::str<>("allocated malloc OK")
-                    , hpx::debug::hex<6>(length));
+                GHEX_DP_ONLY(memr_deb, trace(hpx::debug::str<>("allocated malloc OK")
+                    , hpx::debug::hex<6>(length)));
             }
             address_    = static_cast<char*>(buffer);
             base_addr_  = static_cast<char*>(buffer);
@@ -103,22 +103,22 @@ namespace detail
                 0, (uint64_t)address_, 0, &(region_), nullptr);
 
             if (ret) {
-                GHEX_DP_LAZY(memr_deb, memr_deb.debug(
+                GHEX_DP_ONLY(memr_deb, debug(
                     hpx::debug::str<>("error registering")
                     , hpx::debug::ptr(buffer) , hpx::debug::hex<6>(length)));
             }
             else {
-                memr_deb.trace(
+                GHEX_DP_ONLY(memr_deb, trace(
                     hpx::debug::str<>("OK registering")
                     , hpx::debug::ptr(buffer) , hpx::debug::ptr(address_)
                     , "desc" , hpx::debug::ptr(fi_mr_desc(region_))
                     , "rkey" , hpx::debug::ptr(fi_mr_key(region_))
-                    , "length" , hpx::debug::hex<6>(size_));
+                    , "length" , hpx::debug::hex<6>(size_)));
             }
 
-            memr_deb.trace(
+            GHEX_DP_ONLY(memr_deb, trace(
                   hpx::debug::str<>("memory region") , hpx::debug::ptr(this)
-                , *this);
+                , *this));
             return 0;
         }
 
@@ -136,8 +136,8 @@ namespace detail
         int release(void)
         {
             if (region_ != nullptr) {
-                memr_deb.trace(hpx::debug::str<>("releasing region")
-                    , *this);
+                GHEX_DP_ONLY(memr_deb, trace(hpx::debug::str<>("releasing region")
+                    , *this));
                 // get these before deleting/unregistering (for logging)
                 [[maybe_unused]] auto buffer = memr_deb.declare_variable<uint64_t>(get_base_address());
                 [[maybe_unused]] auto length = memr_deb.declare_variable<uint64_t>(get_size());
@@ -145,14 +145,14 @@ namespace detail
                 if (traits::rma_memory_region_traits<RegionProvider>::
                     unregister_memory(region_))
                 {
-                    GHEX_DP_LAZY(memr_deb, memr_deb.debug("Error, fi_close mr failed\n"));
+                    GHEX_DP_ONLY(memr_deb, debug("Error, fi_close mr failed\n"));
                     return -1;
                 }
                 else {
-                    memr_deb.trace(hpx::debug::str<>("deregistered region")
+                    GHEX_DP_ONLY(memr_deb, trace(hpx::debug::str<>("deregistered region")
                         , hpx::debug::ptr(get_local_key())
                         , "at address" , hpx::debug::ptr(buffer)
-                        , "with length" , hpx::debug::hex<6>(length));
+                        , "with length" , hpx::debug::hex<6>(length)));
                 }
                 if (!get_user_region()) {
                     delete [](static_cast<const char*>(get_base_address()));

@@ -77,10 +77,10 @@ namespace detail
         // ------------------------------------------------------------------------
         bool allocate_pool()
         {
-            mps_deb.trace(hpx::debug::str<>(PoolType::desc()), "Allocating"
+            GHEX_DP_ONLY(mps_deb, trace(hpx::debug::str<>(PoolType::desc()), "Allocating"
                , "ChunkSize", hpx::debug::hex<4>(ChunkSize)
                , "num_chunks", hpx::debug::dec<>(MaxChunks)
-               , "total", hpx::debug::hex<4>(ChunkSize*MaxChunks));
+               , "total", hpx::debug::hex<4>(ChunkSize*MaxChunks)));
 
             // Allocate one very large registered block for N small blocks
             region_ptr block =
@@ -100,9 +100,9 @@ namespace detail
                     ChunkSize,
                     region_type::BLOCK_PARTIAL
                 );
-                mps_deb.trace(hpx::debug::str<>(PoolType::desc()), "Allocate Block"
+                GHEX_DP_ONLY(mps_deb, trace(hpx::debug::str<>(PoolType::desc()), "Allocate Block"
                    , hpx::debug::dec<>(i)
-                   , region_list_[i]);
+                   , region_list_[i]));
                 // push the pointer onto our stack
                 push(&region_list_[i]);
                 offset += ChunkSize;
@@ -115,9 +115,9 @@ namespace detail
         void DeallocatePool()
         {
             if (in_use_!=0) {
-                mps_deb.trace(hpx::debug::str<>(PoolType::desc())
+                GHEX_DP_ONLY(mps_deb, trace(hpx::debug::str<>(PoolType::desc())
                    , "Deallocating free_list : Not all blocks were returned"
-                   , "refcounts", hpx::debug::dec<>(in_use_));
+                   , "refcounts", hpx::debug::dec<>(in_use_)));
             }
 #ifdef RMA_POOL_DEBUG_SET
             for (auto region : region_set_) {
@@ -144,15 +144,15 @@ namespace detail
                 region_set_.erase(region);
             }
 #endif
-            mps_deb.trace(hpx::debug::str<>(PoolType::desc()), "Push block", *region
+            GHEX_DP_ONLY(mps_deb, trace(hpx::debug::str<>(PoolType::desc()), "Push block", *region
                , "Used", hpx::debug::dec<>(in_use_-1)
-               , "Accesses", hpx::debug::dec<>(accesses_));
+               , "Accesses", hpx::debug::dec<>(accesses_)));
 
             if (mps_deb.is_enabled()) {
                 uintptr_t val = uintptr_t(region->get_address());
-                mps_deb.trace(hpx::debug::str<>(PoolType::desc())
+                GHEX_DP_ONLY(mps_deb, trace(hpx::debug::str<>(PoolType::desc())
                    , "Writing 0xdeadbeef to region address"
-                   , hpx::debug::ptr(val));
+                   , hpx::debug::ptr(val)));
                 if (region->get_address()!=nullptr) {
                     // get use the pointer to the region
                     uintptr_t *ptr = reinterpret_cast<uintptr_t*>(val);
@@ -176,16 +176,16 @@ namespace detail
             // get a block
             region_type *region = nullptr;
             if (!free_list_.pop(region)) {
-                mps_deb.trace(hpx::debug::str<>(PoolType::desc())
-                    , "Error in memory pool pop");
+                GHEX_DP_ONLY(mps_deb, trace(hpx::debug::str<>(PoolType::desc())
+                    , "Error in memory pool pop"));
                 return nullptr;
             }
             ++in_use_;
             ++accesses_;
-            mps_deb.trace(hpx::debug::str<>(PoolType::desc()), "Pop block"
+            GHEX_DP_ONLY(mps_deb, trace(hpx::debug::str<>(PoolType::desc()), "Pop block"
                , *region
                , "Used", hpx::debug::dec<>(in_use_)
-               , "Accesses", hpx::debug::dec<>(accesses_));
+               , "Accesses", hpx::debug::dec<>(accesses_)));
 
 #ifdef RMA_POOL_DEBUG_SET
             {

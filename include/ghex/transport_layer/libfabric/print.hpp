@@ -72,6 +72,7 @@ extern char** environ;
 // Used to wrap function call parameters to prevent evaluation
 // when debugging is disabled
 #define GHEX_DP_LAZY(printer, Expr) printer.eval([&] { return Expr; })
+#define GHEX_DP_ONLY(printer, Expr) if (printer.is_enabled()) { printer.Expr; };
 
 // ------------------------------------------------------------
 /// \cond NODETAIL

@@ -76,41 +76,41 @@ struct locality {
     {
         std::memcpy(&data_[0], &in_data[0], locality_defs::array_size);
         fi_address_ = 0;
-        loc_deb.trace(hpx::debug::str<>("expl constructing"), iplocality((*this)));
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("expl constructing"), iplocality((*this))));
     }
 
     locality() {
         std::memset(&data_[0], 0x00, locality_defs::array_size);
         fi_address_ = 0;
-        loc_deb.trace(hpx::debug::str<>("default construct"), iplocality((*this)));
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("default construct"), iplocality((*this))));
     }
 
     locality(const locality &other)
         : data_(other.data_)
         , fi_address_(other.fi_address_)
     {
-        loc_deb.trace(hpx::debug::str<>("copy construct"), iplocality((*this)));
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("copy construct"), iplocality((*this))));
     }
 
     locality(const locality &other, fi_addr_t addr)
         : data_(other.data_)
         , fi_address_(addr)
     {
-        loc_deb.trace(hpx::debug::str<>("copy fi construct"), iplocality((*this)));
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("copy fi construct"), iplocality((*this))));
     }
 
     locality(locality &&other)
         : data_(std::move(other.data_))
         , fi_address_(other.fi_address_)
     {
-        loc_deb.trace(hpx::debug::str<>("move construct"), iplocality((*this)));
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("move construct"), iplocality((*this))));
     }
 
     // provided to support sockets mode bootstrap
     explicit locality(const std::string &address,  const std::string &portnum)
     {
-        loc_deb.trace(hpx::debug::str<>("explicit construct")
-            , address, ":", portnum);
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("explicit construct")
+            , address, ":", portnum));
         //
         struct sockaddr_in socket_data;
         memset (&socket_data, 0, sizeof (socket_data));
@@ -120,40 +120,40 @@ struct locality {
         //
         std::memcpy(&data_[0], &socket_data, locality_defs::array_size);
         fi_address_ = 0;
-        loc_deb.trace(hpx::debug::str<>("string constructing"), iplocality((*this)));
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("string constructing"), iplocality((*this))));
     }
 
     // some condition marking this locality as valid
     explicit inline operator bool() const {
-        loc_deb.trace(hpx::debug::str<>("bool operator"), iplocality((*this)));
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("bool operator"), iplocality((*this))));
         return (ip_address() != 0);
     }
 
     inline bool valid() const {
-        loc_deb.trace(hpx::debug::str<>("valid operator"), iplocality((*this)));
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("valid operator"), iplocality((*this))));
         return (ip_address() != 0);
     }
 
     locality & operator = (const locality &other) {
         data_       = other.data_;
         fi_address_ = other.fi_address_;
-        loc_deb.trace(hpx::debug::str<>("copy operator")
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("copy operator")
             , iplocality(*this)
-            , iplocality(other));
+            , iplocality(other)));
         return *this;
     }
 
     bool operator == (const locality &other) {
-        loc_deb.trace(hpx::debug::str<>("equality operator")
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("equality operator")
             , iplocality(*this)
-            , iplocality(other));
+            , iplocality(other)));
         return std::memcmp(&data_, &other.data_, locality_defs::array_size)==0;
     }
 
     bool less_than(const locality &other) {
-        loc_deb.trace(hpx::debug::str<>("less operator")
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("less operator")
             , iplocality(*this)
-            , iplocality(other));
+            , iplocality(other)));
         if (ip_address() < other.ip_address()) return true;
         if (ip_address() ==other.ip_address()) return port()<other.port();
         return false;
@@ -201,9 +201,9 @@ struct locality {
 
 private:
     friend bool operator==(locality const & lhs, locality const & rhs) {
-        loc_deb.trace(hpx::debug::str<>("equality friend")
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("equality friend")
             , iplocality(lhs)
-            , iplocality(rhs));
+            , iplocality(rhs)));
         return ((lhs.data_ == rhs.data_)
                 && (lhs.fi_address_ == rhs.fi_address_));
     }
@@ -213,9 +213,9 @@ private:
         const uint32_t &a2 = rhs.ip_address();
         const fi_addr_t &f1 = lhs.fi_address();
         const fi_addr_t &f2 = rhs.fi_address();
-        loc_deb.trace(hpx::debug::str<>("less friend")
+        GHEX_DP_ONLY(loc_deb, trace(hpx::debug::str<>("less friend")
             , iplocality(lhs)
-            , iplocality(rhs));
+            , iplocality(rhs)));
         return (a1<a2) || (a1==a2 && f1<f2);
     }
 

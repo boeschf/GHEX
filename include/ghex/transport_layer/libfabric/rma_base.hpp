@@ -142,13 +142,13 @@ namespace libfabric
                 m_unregister = true;
                 m_region = memory_pool_->register_temporary_region(ptr, size);
                 memory_pool_->add_address_to_map(ptr, m_region);
-                GHEX_DP_LAZY(any_deb, any_deb.debug(hpx::debug::str<>("register"), *m_region));
+                GHEX_DP_ONLY(any_deb, debug(hpx::debug::str<>("register"), *m_region));
             }
             m_region->set_message_length(size);
         }
 
         void unregister() {
-            GHEX_DP_LAZY(any_deb, any_deb.debug(hpx::debug::str<>("unregister"), *m_region));
+            GHEX_DP_ONLY(any_deb, debug(hpx::debug::str<>("unregister"), *m_region));
             memory_pool_->remove_address_from_map(m_region->get_address(), m_region);
             memory_pool_->deallocate(m_region);
         }

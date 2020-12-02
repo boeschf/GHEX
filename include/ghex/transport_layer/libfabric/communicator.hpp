@@ -166,7 +166,7 @@ namespace gridtools {
 //                        snd->postprocess_handler_ = [this](sender* s)
 //                            {
 //            //                    --senders_in_use_;
-//                                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("senders in use")
+//                                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("senders in use")
 //                                              , "(-- stack sender)"
 //                                              , hpx::debug::ptr(s)
 //                                              /*, hpx::debug::dec<>(senders_in_use_)*/));
@@ -195,7 +195,7 @@ namespace gridtools {
 
 //                        // set the sender destination address/offset in AV table
 ////                        snd->dst_addr_ = fi_addr_t(rank);
-//                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("message_region_owned_ = false")));
+//                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("message_region_owned_ = false")));
 
 //                        return snd;
 //                    }
@@ -300,7 +300,7 @@ namespace gridtools {
                         // increment counter of total messages sent
 //                        ++sends_posted_;
 
-                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("message buffer"), *send_region));
+                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("message buffer"), *send_region));
 
                         bool ok = false;
                         while (!ok) {
@@ -393,12 +393,12 @@ namespace gridtools {
                             // cleanup temp region if necessary
                             p->message_holder_.clear();
                             p->message_region_ = nullptr;
-                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send (future)"), "F(set)"));
+                            GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Send (future)"), "F(set)"));
                             p->m_ready = true;
                         };
                         req.m_lf_ctxt->init_message_data(msg, stag);
 
-                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send (future)")
+                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Send (future)")
                             , "thisrank", hpx::debug::dec<>(rank())
                             , "rank", hpx::debug::dec<>(dst)
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
@@ -465,10 +465,10 @@ namespace gridtools {
                              dst, tag
                              ]() mutable
                         {
-                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send any"),"(callback lambda)"
+                            GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Send any"),"(callback lambda)"
                                  , "F(set)", hpx::debug::dec<>(dst)));
                             callback(std::move(msg), dst, tag);
-                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send any"),"(callback lambda)"
+                            GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Send any"),"(callback lambda)"
                                  , "done", hpx::debug::dec<>(dst)));
                             // cleanup temp region if necessary
                             p->message_holder_.clear();
@@ -477,7 +477,7 @@ namespace gridtools {
                         };
 
 
-                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Send any"), "(callback)"
+                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Send any"), "(callback)"
                          , "thisrank", hpx::debug::dec<>(rank())
                          , "rank", hpx::debug::dec<>(dst)
                          , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
@@ -503,7 +503,7 @@ namespace gridtools {
                     [[nodiscard]] future<void> recv(Message &msg, rank_type src, tag_type tag)
                     {
                         [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(future)");
-                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("map contents")
+                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("map contents")
                                             , m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map()));
 
                         std::uint64_t stag = make_tag64(tag);
@@ -524,7 +524,7 @@ namespace gridtools {
 
                         req.m_lf_ctxt->init_message_data(msg, stag);
 
-                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (future)")
+                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Recv (future)")
                             , "thisrank", hpx::debug::dec<>(rank())
                             , "rank", hpx::debug::dec<>(src)
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
@@ -534,7 +534,7 @@ namespace gridtools {
                             , "size", hpx::debug::hex<6>(msg.size())));
 
                         req.m_lf_ctxt->user_cb_ = [p=req.m_lf_ctxt](){
-                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (future)"), "F(set)"));
+                            GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Recv (future)"), "F(set)"));
                             p->m_ready = true;
                         };
 
@@ -547,7 +547,7 @@ namespace gridtools {
                     request_cb_type recv(any_libfabric_message &&msg, rank_type src, tag_type tag, CallBack&& callback)
                     {
                         [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(callback)");
-                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("map contents")
+                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("map contents")
                                             , m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map()));
 
                         std::uint64_t stag = make_tag64(tag);
@@ -568,7 +568,7 @@ namespace gridtools {
 
                         req.m_lf_ctxt->init_message_data(msg, stag);
 
-                        GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (callback)")
+                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Recv (callback)")
                             , "thisrank", hpx::debug::dec<>(rank())
                             , "rank", hpx::debug::dec<>(src)
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
@@ -585,7 +585,7 @@ namespace gridtools {
                              src, tag
                              ]() mutable
                         {
-                            GHEX_DP_LAZY(com_deb, com_deb.debug(hpx::debug::str<>("Recv (callback)")
+                            GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Recv (callback)")
                                  , "F(set)", hpx::debug::dec<>(src)));
                             callback(std::move(msg), src, tag);
                             p->m_ready = true;

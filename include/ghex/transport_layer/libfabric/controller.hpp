@@ -197,14 +197,14 @@ struct context_info {
             //
           , immediate_(false)
         {
-            std::cout.setf(std::ios::unitbuf);
+            GHEX_DP_ONLY(cnt_deb, eval([](){ std::cout.setf(std::ios::unitbuf); }));
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
 
             open_fabric(provider, domain, rank);
 
             // setup a passive listener, or an active RDM endpoint
             here_ = create_local_endpoint();
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Overriding here") , iplocality(here_)));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Overriding here") , iplocality(here_)));
 
             // Create a memory pool for pinned buffers
             memory_pool_.reset(
@@ -220,10 +220,10 @@ struct context_info {
 #if defined(GHEX_LIBFABRIC_HAVE_BOOTSTRAPPING)
             if (bootstrap) {
 #if defined(GHEX_LIBFABRIC_PROVIDER_SOCKETS)
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Calling boot SOCKETS")));
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Calling boot SOCKETS")));
                 boot_SOCKETS();
 #elif defined(GHEX_LIBFABRIC_HAVE_PMI)
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug("Calling boot PMI"));
+                GHEX_DP_ONLY(cnt_deb, debug("Calling boot PMI"));
                 boot_PMI();
 # endif
                 if (root_ == here_) {
@@ -243,31 +243,31 @@ struct context_info {
             unsigned int rma_reads_        = 0;
             unsigned int recv_deletes_     = 0;
 
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("counters")
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("counters")
                 , "Received messages" , hpx::debug::dec<>(messages_handled_)
                 , "Total reads"       , hpx::debug::dec<>(rma_reads_)
                 , "Total deletes"     , hpx::debug::dec<>(recv_deletes_)
                 , "deletes error"     , hpx::debug::dec<>(messages_handled_ - recv_deletes_)));
 
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("closing"), "fabric"));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("closing"), "fabric"));
             if (fabric_)
                 fi_close(&fabric_->fid);
 #ifdef GHEX_LIBFABRIC_ENDPOINT_RDM
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("closing"), "ep_active"));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("closing"), "ep_active"));
             if (ep_active_)
                 fi_close(&ep_active_->fid);
 #endif
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("closing"), "event_queue"));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("closing"), "event_queue"));
             if (event_queue_)
                 fi_close(&event_queue_->fid);
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("closing"), "fabric_domain"));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("closing"), "fabric_domain"));
             if (fabric_domain_)
                 fi_close(&fabric_domain_->fid);
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("closing"), "ep_shared_rx_cxt"));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("closing"), "ep_shared_rx_cxt"));
             if (ep_shared_rx_cxt_)
                 fi_close(&ep_shared_rx_cxt_->fid);
             // clean up
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("freeing fabric_info"));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("freeing fabric_info"));
             fi_freeinfo(fabric_info_));
         }
 
@@ -280,13 +280,13 @@ struct context_info {
             std::size_t N = get_num_localities();
             bootstrap_counter_ = N-1;
 
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Bootstrap")
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Bootstrap")
                 , N , " localities"));
 
             // create address vector and queues we need if bootstrapping
             create_completion_queues(fabric_info_, N);
 
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("inserting root addr")
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("inserting root addr")
                           , iplocality(root_)));
             root_ = insert_address(root_);
 #endif
@@ -300,7 +300,7 @@ struct context_info {
             //
             if (rank > 0)
             {
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("sending here")
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("sending here")
                     , iplocality(here_)
                     , "size", locality_defs::array_size));
                 /*int err = */MPI_Send(
@@ -311,7 +311,7 @@ struct context_info {
                             0, // tag
                             comm);
 
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("receiving all")
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("receiving all")
                     , "size", locality_defs::array_size));
 
                 MPI_Status status;
@@ -323,13 +323,13 @@ struct context_info {
                             0, // tag
                             comm,
                             &status);
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("received addresses")));
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("received addresses")));
             }
             else {
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("receiving addresses")));
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("receiving addresses")));
                 memcpy(&localities[0], here_.fabric_data(), locality_defs::array_size);
                 for (int i=1; i<size; ++i) {
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("receiving address"), hpx::debug::dec<>(i)));
+                    GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("receiving address"), hpx::debug::dec<>(i)));
                     MPI_Status status;
                     /*int err = */MPI_Recv(
                                 &localities[i*locality_defs::array_size],
@@ -339,12 +339,12 @@ struct context_info {
                                 0, // tag
                                 comm,
                                 &status);
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("received address"), hpx::debug::dec<>(i)));
+                    GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("received address"), hpx::debug::dec<>(i)));
                 }
 
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("sending all")));
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("sending all")));
                 for (int i=1; i<size; ++i) {
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("sending to"), hpx::debug::dec<>(i)));
+                    GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("sending to"), hpx::debug::dec<>(i)));
                     /*int err = */MPI_Send(
                                 &localities[0],
                                 size*locality_defs::array_size,
@@ -356,7 +356,7 @@ struct context_info {
             }
 
             // all ranks should now have a full localities vector
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("populating vector")));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("populating vector")));
             for (int i=0; i<size; ++i) {
                 locality temp;
                 int offset = i*locality_defs::array_size;
@@ -377,13 +377,13 @@ struct context_info {
             // we require message and RMA support, so ask for them
             // we also want receives to carry source address info
             here_ = locality("127.0.0.1", "7909");
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Here locality") , iplocality(here_)));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Here locality") , iplocality(here_)));
 
 //#ifdef GHEX_LIBFABRIC_HAVE_BOOTSTRAPPING
 #if defined(GHEX_LIBFABRIC_SOCKETS)
             // If we are the root node, then create connection with the right port address
             if (rank == 0) {
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("root locality = src")
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("root locality = src")
                               , iplocality(root_)));
                 // this memory will (should) be deleted in hints destructor                
                 struct sockaddr_in *socket_data1 = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
@@ -393,7 +393,7 @@ struct context_info {
                 fabric_hints_->src_addrlen  = sizeof(struct sockaddr_in);
             }
             else {
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("root locality = dest")
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("root locality = dest")
                               , iplocality(root_)));
                 // this memory will (should) be deleted in hints destructor
                 struct sockaddr_in *socket_data2 = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
@@ -410,11 +410,11 @@ struct context_info {
 
             fabric_hints_->mode                   = FI_CONTEXT /*| FI_MR_LOCAL*/;
             fabric_hints_->fabric_attr->prov_name = strdup(provider.c_str());
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("fabric provider")
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("fabric provider")
                 , fabric_hints_->fabric_attr->prov_name));
             if (domain.size()>0) {
                 fabric_hints_->domain_attr->name  = strdup(domain.c_str());
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("fabric domain")
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("fabric domain")
                     , fabric_hints_->domain_attr->name));
             }
 
@@ -433,7 +433,7 @@ struct context_info {
             fabric_hints_->domain_attr->resource_mgmt = FI_RM_ENABLED;
 
 #ifdef GHEX_LIBFABRIC_ENDPOINT_RDM
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("fabric endpoint"), "RDM"));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("fabric endpoint"), "RDM"));
             fabric_hints_->ep_attr->type = FI_EP_RDM;
 #endif
 
@@ -442,7 +442,7 @@ struct context_info {
             fabric_hints_->rx_attr->op_flags = FI_COMPLETION;
 
             uint64_t flags = 0;
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("get fabric info")
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("get fabric info")
                           , "FI_VERSION"
                           , hpx::debug::dec(GHEX_LIBFABRIC_FI_VERSION_MAJOR)
                           , hpx::debug::dec(GHEX_LIBFABRIC_FI_VERSION_MINOR)));
@@ -451,30 +451,30 @@ struct context_info {
             if (ret) {
                 throw fabric_error(ret, "Failed to get fabric info");
             }
-            cnt_deb.trace(hpx::debug::str<>("Fabric info"), "\n"
-                , fi_tostr(fabric_info_, FI_TYPE_INFO));
+            GHEX_DP_ONLY(cnt_deb, trace(hpx::debug::str<>("Fabric info"), "\n"
+                , fi_tostr(fabric_info_, FI_TYPE_INFO)));
 
             immediate_ = (fabric_info_->rx_attr->mode & FI_RX_CQ_DATA)!=0;
-            cnt_deb.trace(hpx::debug::str<>("Fabric IMMEDIATE")
-                , immediate_);
+            GHEX_DP_ONLY(cnt_deb, trace(hpx::debug::str<>("Fabric IMMEDIATE")
+                , immediate_));
 //            bool context = cnt_deb.declare_variable<bool>(
 //                        fabric_hints_->mode & FI_CONTEXT);
             bool context = (fabric_hints_->mode & FI_CONTEXT)!=0;
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Requires FI_CONTEXT")
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Requires FI_CONTEXT")
                 , context));
 
             bool mrlocal = (fabric_hints_->mode & FI_MR_LOCAL)!=0;
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Requires FI_MR_LOCAL")
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Requires FI_MR_LOCAL")
                 , mrlocal));
 
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Creating fi_fabric")));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Creating fi_fabric")));
             ret = fi_fabric(fabric_info_->fabric_attr, &fabric_, nullptr);
             if (ret) {
                 throw fabric_error(ret, "Failed to get fi_fabric");
             }
 
             // Allocate a domain.
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Allocating domain")));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Allocating domain")));
             ret = fi_domain(fabric_, fabric_info_, &fabric_domain_, nullptr);
             if (ret) throw fabric_error(ret, "fi_domain");
 
@@ -518,7 +518,7 @@ struct context_info {
             int ret = fi_open_ops(&fabric_domain_->fid, FI_GNI_DOMAIN_OPS_1,
                       0, (void **) &gni_domain_ops, nullptr);
             if (ret) throw fabric_error(ret, "fi_open_ops");
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug("domain ops returned " , hpx::debug::ptr(gni_domain_ops)));
+            GHEX_DP_ONLY(cnt_deb, debug("domain ops returned " , hpx::debug::ptr(gni_domain_ops)));
 
             ret = gni_domain_ops->set_val(&fabric_domain_->fid,
                     (dom_ops_val_t)(op), &value);
@@ -526,7 +526,7 @@ struct context_info {
 
             ret = gni_domain_ops->get_val(&fabric_domain_->fid,
                     (dom_ops_val_t)(op), &get_val);
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug("Cache mode set to " , get_val));
+            GHEX_DP_ONLY(cnt_deb, debug("Cache mode set to " , get_val));
             if (std::string(value) != std::string(get_val))
                 throw fabric_error(ret, "get val");
 #endif
@@ -546,22 +546,22 @@ struct context_info {
             struct fid *id;
             int ret;
 #ifdef GHEX_LIBFABRIC_ENDPOINT_RDM
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("active endpoint")));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("active endpoint")));
             new_endpoint_active(fabric_info_, &ep_active_);
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("active endpoint") , hpx::debug::ptr(ep_active_)));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("active endpoint") , hpx::debug::ptr(ep_active_)));
             id = &ep_active_->fid;
 #endif
 
 #if !defined(GHEX_LIBFABRIC_HAVE_BOOTSTRAPPING)
             // with tcp we do not use PMI boot, so enable the endpoint now
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Enabling (ep_active)") , hpx::debug::ptr(ep_active_)));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Enabling (ep_active)") , hpx::debug::ptr(ep_active_)));
             ret = fi_enable(ep_active_);
             if (ret) throw fabric_error(ret, "fi_enable");
 #endif
 
             locality::locality_data local_addr;
             std::size_t addrlen = locality_defs::array_size;
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Get address : size") , hpx::debug::dec<>(addrlen)));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Get address : size") , hpx::debug::dec<>(addrlen)));
             ret = fi_getname(id, local_addr.data(), &addrlen);
             if (ret || (addrlen>locality_defs::array_size)) {
                 fabric_error(ret, "fi_getname - size error or other problem");
@@ -574,12 +574,12 @@ struct context_info {
                 for (std::size_t i=0; i<locality_defs::array_length; ++i) {
                     temp1 << hpx::debug::ipaddr(&local_addr[i]) << " - ";
                 }
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("raw address data") , temp1.str().c_str()));
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("raw address data") , temp1.str().c_str()));
                 std::stringstream temp2;
                 for (std::size_t i=0; i<locality_defs::array_length; ++i) {
                     temp2 << hpx::debug::hex<8>(local_addr[i]) << " - ";
                 }
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("raw address data") , temp2.str().c_str()));
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("raw address data") , temp2.str().c_str()));
             };
             return locality(local_addr);
         }
@@ -589,14 +589,14 @@ struct context_info {
         {
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
             // create an 'active' endpoint that can be used for sending/receiving
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Active endpoint")));
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Got info mode") , (info->mode & FI_NOTIFY_FLAGS_ONLY)));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Active endpoint")));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Got info mode") , (info->mode & FI_NOTIFY_FLAGS_ONLY)));
             int ret = fi_endpoint(fabric_domain_, info, new_endpoint, nullptr);
             if (ret) throw fabric_error(ret, "fi_endpoint");
 
             if (info->ep_attr->type == FI_EP_MSG) {
                 if (event_queue_) {
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Binding endpoint to EQ")));
+                    GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Binding endpoint to EQ")));
                     ret = fi_ep_bind(*new_endpoint, &event_queue_->fid, 0);
                     if (ret) throw fabric_error(ret, "bind event_queue_");
                 }
@@ -608,30 +608,30 @@ struct context_info {
         {
             int ret;
             if (av_) {
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Binding AV")));
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Binding AV")));
                 ret = fi_ep_bind(endpoint, &av_->fid, 0);
                 if (ret) throw fabric_error(ret, "bind event_queue_");
             }
 
             if (txcq_) {
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Binding TX CQ")));
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Binding TX CQ")));
                 ret = fi_ep_bind(endpoint, &txcq_->fid, FI_TRANSMIT);
                 if (ret) throw fabric_error(ret, "bind txcq");
             }
 
             if (rxcq_) {
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Binding RX CQ")));
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Binding RX CQ")));
                 ret = fi_ep_bind(endpoint, &rxcq_->fid, FI_RECV);
                 if (ret) throw fabric_error(ret, "rxcq");
             }
 
             if (ep_shared_rx_cxt_) {
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Binding RX context")));
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Binding RX context")));
                 ret = fi_ep_bind(endpoint, &ep_shared_rx_cxt_->fid, 0);
                 if (ret) throw fabric_error(ret, "ep_shared_rx_cxt_");
             }
 
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Enabling endpoint")
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Enabling endpoint")
                 , hpx::debug::ptr(endpoint)));
             ret = fi_enable(endpoint);
             if (ret) throw fabric_error(ret, "fi_enable");
@@ -644,7 +644,7 @@ struct context_info {
         {
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
 #ifndef GHEX_LIBFABRIC_HAVE_BOOTSTRAPPING
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("initialize_localities")
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("initialize_localities")
                 , size , "localities"));
 
             // make sure address vector is created
@@ -653,7 +653,7 @@ struct context_info {
             MPI_exchange_localities(comm, rank, size);
             debug_print_av_vector(size);
 #endif
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Done localities")));
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Done localities")));
         }
 
         // --------------------------------------------------------------------
@@ -686,7 +686,7 @@ struct context_info {
                                        addr.fabric_data_writable(), &addrlen);
                 addr.set_fi_address(fi_addr_t(i));
                 if ((ret == 0) && (addrlen==libfabric::locality_defs::array_size)) {
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("address vector")
+                    GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("address vector")
                         , hpx::debug::dec<3>(i), iplocality(addr)));
 
                 }
@@ -769,20 +769,20 @@ struct context_info {
             if (ret>0) {
                 progress_count processed{true, 0};
                 for (int i=0; i<ret; ++i) {
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
+                    GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Completion")
                         , "txcq wr_id"
                         , fi_tostr(&entry[i].flags, FI_TYPE_OP_FLAGS)
                         , "(" , hpx::debug::dec<>(entry[i].flags) , ")"
                         , "context" , hpx::debug::ptr(entry[i].op_context)
                         , "length" , hpx::debug::hex<6>(entry[i].len)));
                     if (entry[i].flags == (FI_TAGGED | FI_MSG | FI_SEND)) {
-                        GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
+                        GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Completion")
                             , "txcq MSG tagged send completion"));
                         context_info* handler = reinterpret_cast<context_info*>(entry[i].op_context);
                         processed.user_msgs += handler->handle_send_completion();
                     }
                     else if (entry[i].flags == (FI_MSG | FI_SEND)) {
-                        GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
+                        GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Completion")
                             , "txcq MSG send completion"));
                         context_info* handler = reinterpret_cast<context_info*>(entry[i].op_context);
                         processed.user_msgs += handler->handle_send_completion();
@@ -825,7 +825,7 @@ struct context_info {
                     HPX_UNUSED(err_sz);
                     // from the manpage 'man 3 fi_cq_readerr'
                     if (e.err==FI_ECANCELED) {
-                        GHEX_DP_LAZY(cnt_deb, cnt_deb.debug("rxcq Cancelled "
+                        GHEX_DP_ONLY(cnt_deb, debug("rxcq Cancelled "
                                       , "flags"   , hpx::debug::hex<6>(e.flags)
                                       , "len"     , hpx::debug::hex<6>(e.len)
                                       , "context" , hpx::debug::ptr(e.op_context)));
@@ -858,14 +858,14 @@ struct context_info {
             if (ret>0) {
                 progress_count processed{true, 0};
                 for (int i=0; i<ret; ++i) {
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
+                    GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Completion")
                         , "rxcq wr_id"
                         , fi_tostr(&entry[i].flags, FI_TYPE_OP_FLAGS)
                         , "(" , hpx::debug::dec<>(entry[i].flags) , ")"
                         , "context" , hpx::debug::ptr(entry[i].op_context)
                         , "length"  , hpx::debug::hex<6>(entry[i].len)));
                     if (entry[i].flags == (FI_TAGGED | FI_MSG | FI_RECV)) {
-                        GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Completion")
+                        GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Completion")
                             , "rxcq recv tagged completion"
                             , hpx::debug::ptr(entry[i].op_context)));
                         context_info* handler = reinterpret_cast<context_info*>(entry[i].op_context);
@@ -915,7 +915,7 @@ struct context_info {
             fi_cq_attr cq_attr = {};
             // @TODO - why do we check this
 //             if (cq_attr.format == FI_CQ_FORMAT_UNSPEC) {
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Setting CQ")
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Setting CQ")
                     , "FI_CQ_FORMAT_MSG"));
                 cq_attr.format = FI_CQ_FORMAT_MSG;
 //             }
@@ -925,14 +925,14 @@ struct context_info {
             cq_attr.size = info->tx_attr->size;
             info->tx_attr->op_flags |= FI_COMPLETION;
             cq_attr.flags = 0;//|= FI_COMPLETION;
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Creating tx CQ")
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Creating tx CQ")
                           , "size" , hpx::debug::dec<>(info->tx_attr->size)));
             ret = fi_cq_open(fabric_domain_, &cq_attr, &txcq_, &txcq_);
             if (ret) throw fabric_error(ret, "fi_cq_open");
 
             // open completion queue on fabric domain and set context ptr to rx queue
             cq_attr.size = info->rx_attr->size;
-            GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Creating rx CQ")
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Creating rx CQ")
                           , "size" , hpx::debug::dec<>(info->rx_attr->size)));
             ret = fi_cq_open(fabric_domain_, &cq_attr, &rxcq_, &rxcq_);
             if (ret) throw fabric_error(ret, "fi_cq_open");
@@ -943,12 +943,12 @@ struct context_info {
                 if (info->domain_attr->av_type != FI_AV_UNSPEC)
                     av_attr.type = info->domain_attr->av_type;
                 else {
-                    GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("map FI_AV_TABLE")));
+                    GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("map FI_AV_TABLE")));
                     av_attr.type  = FI_AV_TABLE;
                     av_attr.count = N;
                 }
 
-                GHEX_DP_LAZY(cnt_deb, cnt_deb.debug(hpx::debug::str<>("Creating AV")));
+                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Creating AV")));
                 ret = fi_av_open(fabric_domain_, &av_attr, &av_, nullptr);
                 if (ret) throw fabric_error(ret, "fi_av_open");
             }
@@ -958,7 +958,7 @@ struct context_info {
         libfabric::locality insert_address(const libfabric::locality &address)
         {
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
-            cnt_deb.trace(hpx::debug::str<>("inserting AV"), iplocality(address));
+            GHEX_DP_ONLY(cnt_deb, trace(hpx::debug::str<>("inserting AV"), iplocality(address)));
             fi_addr_t fi_addr = 0xffffffff;
             int ret = fi_av_insert(av_, address.fabric_data(), 1, &fi_addr, 0, nullptr);
             if (ret < 0) {
@@ -970,10 +970,10 @@ struct context_info {
             }
             // address was generated correctly, now update the locality with the fi_addr
             libfabric::locality new_locality(address, fi_addr);
-            cnt_deb.trace(hpx::debug::str<>("AV add")
+            GHEX_DP_ONLY(cnt_deb, trace(hpx::debug::str<>("AV add")
                           , "rank" , hpx::debug::dec<>(fi_addr)
                           , iplocality(new_locality)
-                          , "fi_addr" , hpx::debug::hex<4>(fi_addr));
+                          , "fi_addr" , hpx::debug::hex<4>(fi_addr)));
             return new_locality;
         }
     };

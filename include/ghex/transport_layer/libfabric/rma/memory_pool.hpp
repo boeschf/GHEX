@@ -117,7 +117,7 @@ namespace rma
             small_.allocate_pool();
             medium_.allocate_pool();
             large_.allocate_pool();
-            GHEX_DP_LAZY(pool_deb, pool_deb.debug(hpx::debug::str<>("initialization"), "complete"));
+            GHEX_DP_ONLY(pool_deb, debug(hpx::debug::str<>("initialization"), "complete"));
         }
 
         //----------------------------------------------------------------------------
@@ -180,14 +180,13 @@ namespace rma
                 region = allocate_temporary_region(length);
             }
 
-            pool_deb.trace(hpx::debug::str<>("Popping Block")
+            GHEX_DP_ONLY(pool_deb, trace(hpx::debug::str<>("Popping Block")
                 , *region
                 , tiny_.status()
                 , small_.status()
                 , medium_.status()
                 , large_.status()
-                , large_.status()
-                , "temp regions" , hpx::debug::dec<>(temp_regions));
+                , "temp regions" , hpx::debug::dec<>(temp_regions)));
 
             return region;
         }
@@ -200,15 +199,15 @@ namespace rma
             if (region->get_temp_region() || region->get_user_region()) {
                 if (region->get_temp_region()) {
                     --temp_regions;
-                    pool_deb.trace(hpx::debug::str<>("Deallocating")
+                    GHEX_DP_ONLY(pool_deb, trace(hpx::debug::str<>("Deallocating")
                         , "TEMP", *region
-                        , "temp regions" , hpx::debug::dec<>(temp_regions));
+                        , "temp regions" , hpx::debug::dec<>(temp_regions)));
                 }
                 else if (region->get_user_region()) {
                     --user_regions;
-                    pool_deb.trace(hpx::debug::str<>("Deleting")
+                    GHEX_DP_ONLY(pool_deb, trace(hpx::debug::str<>("Deleting")
                         , "USER", *region
-                        , "user regions" , hpx::debug::dec<>(user_regions));
+                        , "user regions" , hpx::debug::dec<>(user_regions)));
                 }
                 delete region;
                 return;
@@ -228,13 +227,13 @@ namespace rma
                 large_.push(region);
             }
 
-            pool_deb.trace(hpx::debug::str<>("Pushing Block")
+            GHEX_DP_ONLY(pool_deb, trace(hpx::debug::str<>("Pushing Block")
                 , *region
                 , tiny_.status()
                 , small_.status()
                 , medium_.status()
                 , large_.status()
-                , "temp regions" , hpx::debug::dec<>(temp_regions));
+                , "temp regions" , hpx::debug::dec<>(temp_regions)));
 
         }
 
@@ -247,9 +246,9 @@ namespace rma
             region->set_temp_region();
             region->allocate(protection_domain_, length);
             ++temp_regions;
-            pool_deb.trace(hpx::debug::str<>("Allocating")
+            GHEX_DP_ONLY(pool_deb, trace(hpx::debug::str<>("Allocating")
                 , "TEMP", *region
-                , "temp regions" , hpx::debug::dec<>(temp_regions));
+                , "temp regions" , hpx::debug::dec<>(temp_regions)));
             return region;
         }
 
@@ -261,9 +260,9 @@ namespace rma
             region_type *region = new region_type(protection_domain_, ptr, length);
             region->set_temp_region();
             ++temp_regions;
-            pool_deb.trace(hpx::debug::str<>("Registered")
+            GHEX_DP_ONLY(pool_deb, trace(hpx::debug::str<>("Registered")
                 , "TEMP", *region
-                , "temp regions" , hpx::debug::dec<>(temp_regions));
+                , "temp regions" , hpx::debug::dec<>(temp_regions)));
             return region;
         }
 
@@ -287,13 +286,13 @@ namespace rma
         // a region instead in the first place
         memory_region *region_from_address(void const * addr)
         {
-            pool_deb.trace(hpx::debug::str<>("Expensive")
-                , "region_from_address");
+            GHEX_DP_ONLY(pool_deb, trace(hpx::debug::str<>("Expensive")
+                , "region_from_address"));
             auto present = region_alloc_pointer_map_.is_in_map(addr);
             if (present.second) {
-                pool_deb.trace(hpx::debug::str<>("Found in map")
+                GHEX_DP_ONLY(pool_deb, trace(hpx::debug::str<>("Found in map")
                     , hpx::debug::ptr(addr)
-                    , *(present.first->second));
+                    , *(present.first->second)));
                 return (present.first->second);
             }
             pool_deb.error(hpx::debug::str<>("Not found in map")
@@ -305,20 +304,20 @@ namespace rma
         void add_address_to_map(void const * addr, region_type* region)
         {
 //            throw(std::runtime_error("Don't use this for benchmarks"));
-            pool_deb.trace(hpx::debug::str<>("Expensive")
+            GHEX_DP_ONLY(pool_deb, trace(hpx::debug::str<>("Expensive")
                 , "add_address_to_map"
-                , hpx::debug::ptr(addr), *region);
+                , hpx::debug::ptr(addr), *region));
             std::pair<void const *, region_type*> val(addr, region);
             region_alloc_pointer_map_.insert(val);
         }
 
         void remove_address_from_map(void const * addr, memory_region* region)
         {
-            pool_deb.trace(hpx::debug::str<>("map contents")
-                                , GHEX_DP_LAZY(pool_deb, region_alloc_pointer_map_.debug_map()));
-            pool_deb.trace(hpx::debug::str<>("Expensive")
+            GHEX_DP_ONLY(pool_deb, trace(hpx::debug::str<>("map contents")
+                                , region_alloc_pointer_map_.debug_map()));
+            GHEX_DP_ONLY(pool_deb, trace(hpx::debug::str<>("Expensive")
                 , "remove_address_from_map"
-                , hpx::debug::ptr(addr), *region);
+                , hpx::debug::ptr(addr), *region));
             region_alloc_pointer_map_.erase(addr);
         }
 
