@@ -151,7 +151,7 @@ struct context_info {
         struct fid_domain *fabric_domain_;
         // Server/Listener for RDMA connections.
         struct fid_ep     *ep_active_;
-        struct fid_ep     *ep_shared_rx_cxt_;
+//        struct fid_ep     *ep_shared_rx_cxt_;
 
         // we will use just one event queue for all connections
         struct fid_eq     *event_queue_;
@@ -188,7 +188,7 @@ struct context_info {
           , fabric_(nullptr)
           , fabric_domain_(nullptr)
           , ep_active_(nullptr)
-          , ep_shared_rx_cxt_(nullptr)
+//          , ep_shared_rx_cxt_(nullptr)
           , event_queue_(nullptr)
             //
           , txcq_(nullptr)
@@ -203,7 +203,7 @@ struct context_info {
             open_fabric(provider, domain, rank);
 
             // setup a passive listener, or an active RDM endpoint
-            here_ = create_local_endpoint();
+            here_ = create_local_endpoint(ep_active_);
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Overriding here") , iplocality(here_)));
 
             // Create a memory pool for pinned buffers
@@ -264,8 +264,8 @@ struct context_info {
             if (fabric_domain_)
                 fi_close(&fabric_domain_->fid);
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("closing"), "ep_shared_rx_cxt"));
-            if (ep_shared_rx_cxt_)
-                fi_close(&ep_shared_rx_cxt_->fid);
+//            if (ep_shared_rx_cxt_)
+//                fi_close(&ep_shared_rx_cxt_->fid);
             // clean up
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("freeing fabric_info"));
             fi_freeinfo(fabric_info_));
@@ -541,21 +541,21 @@ struct context_info {
         }
 
         // --------------------------------------------------------------------
-        locality create_local_endpoint()
+        locality create_local_endpoint(struct fid_ep *&active_endpoint)
         {
             struct fid *id;
             int ret;
 #ifdef GHEX_LIBFABRIC_ENDPOINT_RDM
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("active endpoint")));
-            new_endpoint_active(fabric_info_, &ep_active_);
-            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("active endpoint") , hpx::debug::ptr(ep_active_)));
-            id = &ep_active_->fid;
+            new_endpoint_active(fabric_info_, &active_endpoint);
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("active endpoint") , hpx::debug::ptr(active_endpoint)));
+            id = &active_endpoint->fid;
 #endif
 
 #if !defined(GHEX_LIBFABRIC_HAVE_BOOTSTRAPPING)
             // with tcp we do not use PMI boot, so enable the endpoint now
-            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Enabling (ep_active)") , hpx::debug::ptr(ep_active_)));
-            ret = fi_enable(ep_active_);
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Enabling (ep_active)") , hpx::debug::ptr(active_endpoint)));
+            ret = fi_enable(active_endpoint);
             if (ret) throw fabric_error(ret, "fi_enable");
 #endif
 
@@ -625,11 +625,11 @@ struct context_info {
                 if (ret) throw fabric_error(ret, "rxcq");
             }
 
-            if (ep_shared_rx_cxt_) {
-                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Binding RX context")));
-                ret = fi_ep_bind(endpoint, &ep_shared_rx_cxt_->fid, 0);
-                if (ret) throw fabric_error(ret, "ep_shared_rx_cxt_");
-            }
+//            if (ep_shared_rx_cxt_) {
+//                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Binding RX context")));
+//                ret = fi_ep_bind(endpoint, &ep_shared_rx_cxt_->fid, 0);
+//                if (ret) throw fabric_error(ret, "ep_shared_rx_cxt_");
+//            }
 
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Enabling endpoint")
                 , hpx::debug::ptr(endpoint)));
