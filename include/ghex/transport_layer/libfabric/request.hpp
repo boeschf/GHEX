@@ -12,7 +12,6 @@
 #define INCLUDED_GHEX_TL_LIBFABRIC_REQUEST_HPP
 
 #include <functional>
-#include <ghex/threads/atomic/primitives.hpp>
 #include <ghex/transport_layer/context.hpp>
 #include <ghex/transport_layer/callback_utils.hpp>
 #include <ghex/transport_layer/libfabric/controller.hpp>

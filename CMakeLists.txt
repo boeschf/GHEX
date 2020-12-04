@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.14.5)
 
 project(GHEX VERSION 0.1 LANGUAGES CXX)
 if(USE_GPU)
+    set(CMAKE_CUDA_FLAGS "" CACHE STRING "")
+    string(APPEND CMAKE_CUDA_FLAGS " --cudart shared")
     enable_language(CUDA)
     set(CMAKE_CUDA_STANDARD 14)
     set(CMAKE_CUDA_EXTENSIONS OFF)
@@ -18,7 +20,7 @@ set(USE_HYBRID_TESTS "ON" CACHE BOOL "run gpu+cpu tests")
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wpedantic") # Last option is because of a problem with GCC9. Try to remove with more releases of the compiler
+set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wpedantic -Wno-unknown-pragmas")
 
 set(default_build_type "Debug")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -34,6 +36,7 @@ list(APPEND CMAKE_MODULE_PATH "${GHEX_MODULE_PATH}")
 find_package(MPI REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system)
 find_package(OpenMP)
+find_library(LIBRT rt REQUIRED)
 
 set(_required_gridtools_version "2.0.0")
 if(NOT _gridtools_already_fetched)
@@ -63,6 +66,11 @@ endif()
 set(GHEX_USE_PMIX OFF CACHE BOOL "Set to true to use PMIx process management")
 if (GHEX_USE_PMIX)
     find_package(PMIx REQUIRED)
+endif()
+
+set(GHEX_USE_XPMEM OFF CACHE BOOL "Set to true to use xpmem shared memory")
+if (GHEX_USE_XPMEM)
+    find_package(XPMEM REQUIRED)
 endif()
 
 option(GHEX_USE_LIBFABRIC "Enable/Disable the use of Libfabric transport" OFF)
@@ -102,6 +110,9 @@ if (GHEX_USE_UCP)
         target_link_libraries(ghexlib INTERFACE PMIx::libpmix)
     endif()
 endif()
+if (GHEX_USE_XPMEM)
+    target_link_libraries(ghexlib INTERFACE XPMEM::libxpmem)
+endif()
 if (GHEX_USE_LIBFABRIC)
     target_link_libraries(ghexlib INTERFACE libfabric::libfabric Boost::system)
     if (GHEX_USE_PMIX)
@@ -111,6 +122,8 @@ endif()
 if (GHEX_ENABLE_ATLAS_BINDINGS)
     target_link_libraries(ghexlib INTERFACE atlas)
 endif()
+target_link_libraries(ghexlib INTERFACE ${LIBRT})
+
 target_compile_features(ghexlib INTERFACE cxx_std_14)
 
 # Enable adding of tests etc
@@ -190,5 +203,6 @@ install(
         ${CMAKE_CURRENT_BINARY_DIR}/GHEXConfigVersion.cmake
         ${CMAKE_CURRENT_LIST_DIR}/cmake/FindUCP.cmake
         ${CMAKE_CURRENT_LIST_DIR}/cmake/FindPMIx.cmake
+        ${CMAKE_CURRENT_LIST_DIR}/cmake/FindXPMEM.cmake
     DESTINATION
         ${CMAKE_INSTALL_LIBDIR}/cmake)

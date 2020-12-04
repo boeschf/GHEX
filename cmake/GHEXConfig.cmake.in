@@ -18,6 +18,13 @@ else()
     set(GHEX_USE_UCP OFF)
 endif()
 
+if (@GHEX_USE_XPMEM@)
+    set(GHEX_USE_XPMEM ON)
+    find_dependency(XPMEM)
+else()
+    set(GHEX_USE_XPMEM OFF)
+endif()
+
 if (@GHEX_USE_LIBFABRIC@)
     set(GHEX_USE_LIBFABRIC ON)
     find_dependency(LIBFABRIC)

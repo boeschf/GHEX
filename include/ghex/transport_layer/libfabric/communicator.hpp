@@ -8,8 +8,8 @@
  * SPDX-License-Identifier: BSD-3-Clause
  * 
  */
-#ifndef INCLUDED_GHEX_TL_LIBFABRIC_COMMUNICATOR_CONTEXT_HPP
-#define INCLUDED_GHEX_TL_LIBFABRIC_COMMUNICATOR_CONTEXT_HPP
+#ifndef INCLUDED_GHEX_TL_LIBFABRIC_COMMUNICATOR_HPP
+#define INCLUDED_GHEX_TL_LIBFABRIC_COMMUNICATOR_HPP
 
 #include <atomic>
 //
@@ -26,7 +26,6 @@ namespace gridtools {
 
         namespace tl {
             namespace libfabric {            
-
                 namespace detail {
 
                     // -----------------------------------------------------------------
@@ -71,43 +70,43 @@ namespace gridtools {
                 struct status_t {};
 
                 /** @brief common data which is shared by all communicators. This class is thread safe.
-                  * @tparam ThreadPrimitives The thread primitives type */
-                template<typename ThreadPrimitives>
+                  **/
                 struct shared_communicator_state {
-                    using thread_primitives_type = ThreadPrimitives;
-                    using transport_context_type = transport_context<libfabric_tag, ThreadPrimitives>;
                     using rank_type = int;
                     using tag_type = std::uint64_t;
                     using controller_type = ghex::tl::libfabric::controller;
 
-                    controller_type        *m_controller;
-                    transport_context_type *m_context;
-                    thread_primitives_type *m_thread_primitives;
+                    const mpi::rank_topology& m_rank_topology;
+                    std::uintptr_t            m_ctag_;
+                    controller_type          *m_controller;
+                    MPI_Comm                  m_comm;
+                    rank_type                 m_rank;
+                    rank_type                 m_size;
 
-                    shared_communicator_state(controller_type *control, transport_context_type* tc, thread_primitives_type* tp)
-                    : m_controller{control}
-                    , m_context{tc}
-                    , m_thread_primitives{tp}
+                    shared_communicator_state(const mpi::rank_topology& t, std::uintptr_t context_tag, controller_type *control)
+                    : m_rank_topology{t}
+                    , m_ctag_(context_tag)
+                    , m_controller{control}
+                    , m_comm{t.mpi_comm()}
+                    , m_rank{ [](MPI_Comm c){ int r; GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(c,&r)); return r; }(t.mpi_comm()) }
+                    , m_size{ [](MPI_Comm c){ int s; GHEX_CHECK_MPI_RESULT(MPI_Comm_size(c,&s)); return s; }(t.mpi_comm()) }
                     {}
 
-                    rank_type rank() const noexcept { return m_context->m_rank; }
-                    rank_type size() const noexcept { return m_context->m_size; }
+                    rank_type rank() const noexcept { return m_rank; }
+                    rank_type size() const noexcept { return m_size; }
+                    const mpi::rank_topology& rank_topology() { return m_rank_topology; }
                 };
 
                 /** @brief communicator per-thread data.
-                  * @tparam ThreadPrimitives The thread primitives type */
-                template<typename ThreadPrimitives>
+                  **/
                 struct communicator_state {
-                    using shared_state_type      = shared_communicator_state<ThreadPrimitives>;
-                    using thread_primitives_type = ThreadPrimitives;
-                    using thread_token           = typename thread_primitives_type::token;
+                    using shared_state_type      = shared_communicator_state;
                     using rank_type              = typename shared_state_type::rank_type;
                     using tag_type               = typename shared_state_type::tag_type;
                     template<typename T> using future = future_t<T>;
                     using progress_status        = ghex::tl::cb::progress_status;
                     using controller_shared      = std::shared_ptr<ghex::tl::libfabric::controller>;
 
-                    thread_token        *m_token_ptr;
                     struct fid_ep       *endpoint_;
                     struct fid_domain   *fabric_domain_;
                     //
@@ -116,89 +115,15 @@ namespace gridtools {
                     int m_progressed_cancels = 0;
                     //
 
-                    // We maintain a list of senders that are being used
-//                    using sender_list = std::stack<sender*>;
-//                    std::atomic<unsigned int> senders_in_use_;
-
-                    communicator_state(thread_token* t, struct fid_ep *endpoint, struct fid_domain *domain)
-                    : m_token_ptr{t}
-                    , endpoint_{endpoint}
+                    communicator_state(struct fid_ep *endpoint, struct fid_domain *domain)
+                    : endpoint_{endpoint}
                     , fabric_domain_{domain}
                     {
-//                        // only init the sender list once per thread
-//                        static thread_local std::atomic_flag initialized = ATOMIC_FLAG_INIT;
-//                        if (initialized.test_and_set()) return;
-//                        //
-//                        for (std::size_t i = 0; i < 16; ++i)
-//                        {
-//                            add_sender_to_pool();
-//                        }
                     }
 
                     ~communicator_state()
                     {
-                        // clear senders list
-//                        int i = 0;
-//                        bool ok = true;
-//                        sender* snd = nullptr;
-//                        while (!senders()->empty()) {
-//                            snd = senders()->top();
-////std::cout << "Deleting sender " << i++ << " " << senders()->size() << " " << snd << std::endl;
-//                            delete snd;
-//                            senders()->pop();
-////std::cout << "Deleted sender " << senders()->size() << " " << snd << std::endl;
-//                        }
                     }
-
-//                    // --------------------------------------------------
-//                    static sender_list *senders() {
-//                        static thread_local std::unique_ptr<sender_list> instance(new sender_list());
-//                        return instance.get();
-//                    }
-
-                    // --------------------------------------------------------------------
-                    // return a sender object
-                    // --------------------------------------------------------------------
-                    void add_sender_to_pool() {
-//                        sender *snd = new sender(endpoint_, fabric_domain_);
-//                        // after a sender has been used, it's postprocess handler
-//                        // is called, this returns it to the free list
-//                        snd->postprocess_handler_ = [this](sender* s)
-//                            {
-//            //                    --senders_in_use_;
-//                                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("senders in use")
-//                                              , "(-- stack sender)"
-//                                              , hpx::debug::ptr(s)
-//                                              /*, hpx::debug::dec<>(senders_in_use_)*/));
-////std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushing sender (PPH) " << s << std::endl;
-//                                senders()->push(s);
-////std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushed sender " << senders()->size() << " " << s << std::endl;
-//                                // trigger_pending_work();
-//                            };
-//                        // put the new sender on the free list
-////std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushing sender " << snd << std::endl;
-//                        senders()->push(snd);
-////std::cout << hpx::debug::hex<8>(std::this_thread::get_id()) << " Pushed sender " << senders()->size() << " " << snd << std::endl;
-                    }
-
-//                    sender* get_sender(int rank)
-//                    {
-//                        sender* snd = nullptr;
-//                        // pop an sender from the free list, if that fails, create a new one
-//                        if (senders()->empty())
-//                        {
-//                            add_sender_to_pool();
-//                        }
-//                        snd = senders()->top();
-//                        senders()->pop();
-////                        std::cout << "Popped sender " << " " << snd << std::endl;
-
-//                        // set the sender destination address/offset in AV table
-////                        snd->dst_addr_ = fi_addr_t(rank);
-//                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("message_region_owned_ = false")));
-
-//                        return snd;
-//                    }
 
                     progress_status progress() {
                         return {
@@ -210,11 +135,10 @@ namespace gridtools {
 
                 /** @brief completion handle returned from callback based communications
                   * @tparam ThreadPrimitives The thread primitives type */
-                template<typename ThreadPrimitives>
                 struct request_cb : public gridtools::ghex::tl::libfabric::request_t
                 {
-                    using shared_state_type = shared_communicator_state<ThreadPrimitives>;
-                    using state_type        = communicator_state<ThreadPrimitives>;
+                    using shared_state_type = shared_communicator_state;
+                    using state_type        = communicator_state;
                     using any_message_type  = ::gridtools::ghex::tl::libfabric::any_libfabric_message;
                     using tag_type          = typename shared_state_type::tag_type;
                     using rank_type         = int;
@@ -238,15 +162,11 @@ namespace gridtools {
                 /** @brief A communicator for point-to-point communication.
                   * This class is lightweight and copying/moving instances is safe and cheap.
                   * Communicators can be created through the context, and are thread-compatible.
-                  * @tparam ThreadPrimitives The thread primitives type */
-                template<typename ThreadPrimitives>
+                  */
                 class communicator {
                   public: // member types
-                    using thread_primitives_type = ThreadPrimitives;
-                    using shared_state_type      = shared_communicator_state<ThreadPrimitives>;
-                    using transport_context_type = transport_context<libfabric_tag, ThreadPrimitives>;
-                    using thread_token           = typename thread_primitives_type::token;
-                    using state_type             = communicator_state<ThreadPrimitives>;
+                    using shared_state_type      = shared_communicator_state;
+                    using state_type             = communicator_state;
                     using rank_type              = int;
                     using tag_type               = typename shared_state_type::tag_type;
                     using request                = request_t;
@@ -256,7 +176,7 @@ namespace gridtools {
                     using lf_allocator_type  = allocator_type<unsigned char>;
 
                     using address_type              = rank_type;
-                    using request_cb_type           = request_cb<ThreadPrimitives>;
+                    using request_cb_type           = request_cb;
                     using message_type              = typename request_cb_type::any_message_type;
                     using any_message_type          = typename request_cb_type::any_message_type;
                     using libfabric_msg_type        = message_buffer<lf_allocator_type>;
@@ -285,8 +205,12 @@ namespace gridtools {
                     rank_type size() const noexcept { return m_shared_state->size(); }
                     address_type address() const noexcept { return rank(); }
 
+                    bool is_local(rank_type r) const noexcept { return m_shared_state->rank_topology().is_local(r); }
+                    rank_type local_rank() const noexcept { return m_shared_state->rank_topology().local_rank(); }
+                    auto mpi_comm() const noexcept { return m_shared_state->rank_topology().mpi_comm(); }
+
                     inline std::uint64_t make_tag64(std::uint32_t tag) {
-                        return (std::uint64_t(m_shared_state->m_context->ctag_) << 32) |
+                        return (std::uint64_t(m_shared_state->m_ctag_) << 32) |
                                 (std::uint64_t(tag & 0xFFFFFFFF));
                     }
 
@@ -402,7 +326,7 @@ namespace gridtools {
                             , "thisrank", hpx::debug::dec<>(rank())
                             , "rank", hpx::debug::dec<>(dst)
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
-                            , "cxt", hpx::debug::hex<8>(m_shared_state->m_context)
+                            , "ctag", hpx::debug::hex<8>(m_shared_state->m_ctag_)
                             , "stag", hpx::debug::hex<16>(stag)
                             , "addr", hpx::debug::ptr(msg.data())
                             , "size", hpx::debug::hex<6>(msg.size())));
@@ -481,7 +405,7 @@ namespace gridtools {
                          , "thisrank", hpx::debug::dec<>(rank())
                          , "rank", hpx::debug::dec<>(dst)
                          , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
-                         , "cxt", hpx::debug::hex<8>(m_shared_state->m_context)
+                         , "ctag", hpx::debug::hex<8>(m_shared_state->m_ctag_)
                          , "stag", hpx::debug::hex<16>(stag)
                          , "addr", hpx::debug::ptr(msg.data())
                          , "size", hpx::debug::hex<6>(msg.size())));
@@ -528,7 +452,7 @@ namespace gridtools {
                             , "thisrank", hpx::debug::dec<>(rank())
                             , "rank", hpx::debug::dec<>(src)
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
-                            , "cxt", hpx::debug::hex<8>(m_shared_state->m_context)
+                            , "ctag", hpx::debug::hex<8>(m_shared_state->m_ctag_)
                             , "stag", hpx::debug::hex<16>(stag)
                             , "addr", hpx::debug::ptr(msg.data())
                             , "size", hpx::debug::hex<6>(msg.size())));
@@ -572,7 +496,7 @@ namespace gridtools {
                             , "thisrank", hpx::debug::dec<>(rank())
                             , "rank", hpx::debug::dec<>(src)
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
-                            , "cxt", hpx::debug::hex<8>(m_shared_state->m_context)
+                            , "ctag", hpx::debug::hex<8>(m_shared_state->m_ctag_)
                             , "stag", hpx::debug::hex<16>(stag)
                             , "addr", hpx::debug::ptr(msg.data())
                             , "size", hpx::debug::hex<6>(msg.size())));
@@ -608,18 +532,6 @@ namespace gridtools {
                       * @return non-zero if any communication was progressed, zero otherwise. */
                     progress_status progress() {
                         return m_shared_state->m_controller->poll_for_work_completions();
-                    }
-
-                    void barrier() {
-                        if (auto token_ptr = m_state->m_token_ptr) {
-                            auto& tp = *(m_shared_state->m_thread_primitives);
-                            auto& token = *token_ptr;
-                            tp.single(token, [this]() { MPI_Barrier(m_shared_state->m_context->m_comm); } );
-                            progress(); // progress once more to set progress counters to zero
-                            tp.barrier(token);
-                        }
-                        else
-                            MPI_Barrier(m_shared_state->m_context->m_comm);
                     }
                 };
 
