@@ -40,7 +40,6 @@ namespace gridtools {
                 state_vector              m_states;
                 shared_state_type         m_shared_state;
                 state_type                m_state;
-                std::uintptr_t            m_ctag_;
                 std::mutex                m_mutex;
 
                 // --------------------------------------------------
@@ -60,29 +59,16 @@ namespace gridtools {
                 }
 
                 // --------------------------------------------------
-                template<typename... Args>
-                transport_context(const mpi::rank_topology& t, MPI_Comm mpi_comm, Args&&...)
+                transport_context(const mpi::rank_topology& t)
                   : m_rank_topology{t}
                   , m_states()
-                  , m_comm{mpi_comm}
+                  , m_comm{t.mpi_comm()}
                   , m_rank{ [](MPI_Comm c){ int r; GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(c,&r)); return r; }(m_comm) }
                   , m_size{ [](MPI_Comm c){ int s; GHEX_CHECK_MPI_RESULT(MPI_Comm_size(c,&s)); return s; }(m_comm) }
                   , m_controller(init_libfabric_controller(m_comm, m_rank, m_size))
-                  , m_shared_state{m_rank_topology, reinterpret_cast<std::uintptr_t>(this), m_controller}
+                  , m_shared_state{m_rank_topology, m_controller}
                   , m_state{m_controller->ep_active_, m_controller->fabric_domain_}
-                  , m_ctag_(0)
                 {
-                    const int tag_value = 65535;
-                    if (m_rank==0) {
-                        m_ctag_ = reinterpret_cast<std::uintptr_t>(this);
-                        for (int i=1; i<m_size; ++i) {
-                            MPI_Send(&m_ctag_, sizeof(std::uintptr_t), MPI_CHAR, i, tag_value, m_comm);
-                        }
-                    }
-                    else {
-                        MPI_Status status;
-                        MPI_Recv(&m_ctag_, sizeof(std::uintptr_t), MPI_CHAR, 0, tag_value, m_comm, &status);
-                    }
                 }
 
                 communicator_type get_serial_communicator()
@@ -117,7 +103,7 @@ namespace gridtools {
                     // pass comm twice as the context constructor needs it
                     // and passes it on to the libfabric::transport_context
                     // constructor as another arg
-                    new context_type{new_comm, new_comm}};
+                    new context_type{new_comm}};
             }
         };
 

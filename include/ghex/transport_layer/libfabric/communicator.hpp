@@ -83,14 +83,29 @@ namespace gridtools {
                     rank_type                 m_rank;
                     rank_type                 m_size;
 
-                    shared_communicator_state(const mpi::rank_topology& t, std::uintptr_t context_tag, controller_type *control)
-                    : m_rank_topology{t}
-                    , m_ctag_(context_tag)
-                    , m_controller{control}
-                    , m_comm{t.mpi_comm()}
-                    , m_rank{ [](MPI_Comm c){ int r; GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(c,&r)); return r; }(t.mpi_comm()) }
-                    , m_size{ [](MPI_Comm c){ int s; GHEX_CHECK_MPI_RESULT(MPI_Comm_size(c,&s)); return s; }(t.mpi_comm()) }
-                    {}
+                    shared_communicator_state(const mpi::rank_topology& t, controller_type *control)
+                        : m_rank_topology{t}
+                        , m_controller{control}
+                        , m_comm{t.mpi_comm()}
+                        , m_rank{ [](MPI_Comm c){ int r; GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(c,&r)); return r; }(t.mpi_comm()) }
+                        , m_size{ [](MPI_Comm c){ int s; GHEX_CHECK_MPI_RESULT(MPI_Comm_size(c,&s)); return s; }(t.mpi_comm()) }
+                    {
+                        const int tag_value = 65535;
+                        if (m_rank==0) {
+                            m_ctag_ = reinterpret_cast<std::uintptr_t>(this);
+                            GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("MPI send tag")
+                                                        ,hpx::debug::hex<8>(m_ctag_)));
+                            for (int i=1; i<m_size; ++i) {
+                                MPI_Send(&m_ctag_, sizeof(std::uintptr_t), MPI_CHAR, i, tag_value, m_comm);
+                            }
+                        }
+                        else {
+                            MPI_Status status;
+                            MPI_Recv(&m_ctag_, sizeof(std::uintptr_t), MPI_CHAR, 0, tag_value, m_comm, &status);
+                            GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("MPI recv tag")
+                                                        ,hpx::debug::hex<8>(m_ctag_)));
+                        }
+                    }
 
                     rank_type rank() const noexcept { return m_rank; }
                     rank_type size() const noexcept { return m_size; }
@@ -224,7 +239,9 @@ namespace gridtools {
                         // increment counter of total messages sent
 //                        ++sends_posted_;
 
-                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("message buffer"), *send_region));
+                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("send message buffer")
+                                                    , *send_region
+                                                    , "tag", hpx::debug::hex<16>(tag_)));
 
                         bool ok = false;
                         while (!ok) {
@@ -260,6 +277,10 @@ namespace gridtools {
                     void receive_tagged_region(region_type *recv_region, fi_addr_t src_addr_, uint64_t tag_, void *ctxt)
                     {
                         [[maybe_unused]] auto scp = com_deb.scope(__func__);
+
+                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("recv message buffer")
+                                                    , *recv_region
+                                                    , "tag", hpx::debug::hex<16>(tag_)));
 
                         // this should never actually return true and yield/sleep
                         bool ok = false;
