@@ -102,6 +102,7 @@ public:
     , m_threads_per_rank{thread_d[0]*thread_d[1]*thread_d[2]}
     {
         hwcart_create(MPI_COMM_WORLD, 5, m_levels.data(), m_topo.data(), m_order, &m_comm);
+        hwcart_print_rank_topology(m_comm, 5, m_levels.data(), m_topo.data(), m_order);
         MPI_Comm_rank(m_comm, &m_rank);
         hwcart_rank2coord(m_comm, m_global_decomposition.data(), m_rank, m_order, m_coord.data());
         m_coord[0] *= thread_d[0];
