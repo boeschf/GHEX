@@ -21,6 +21,9 @@
 #include <pthread.h>
 #include <thread>
 #include <vector>
+extern "C" {
+#include <hwcart.h>
+}
 
 #ifndef GHEX_TEST_USE_UCX
 #include <ghex/transport_layer/mpi/context.hpp>
@@ -36,10 +39,101 @@ using transport = gridtools::ghex::tl::ucx_tag;
 #include <ghex/structured/regular/domain_descriptor.hpp>
 #include <ghex/structured/regular/field_descriptor.hpp>
 #include <ghex/structured/regular/halo_generator.hpp>
-#include <ghex/util/decomposition.hpp>
 #include <ghex/common/timer.hpp>
 
 using clock_type = std::chrono::high_resolution_clock;
+
+class decomposition
+{
+public:
+    using arr = std::array<int,3>;
+
+private:
+    MPI_Comm m_comm;
+    arr m_node_decomposition;
+    arr m_socket_decomposition;
+    arr m_numa_decomposition;
+    arr m_L3_decomposition;
+    arr m_rank_decomposition;
+    arr m_thread_decomposition;
+    arr m_global_decomposition;
+    std::array<int,3*5> m_topo;
+    std::array<int,5> m_levels = {
+        HWCART_MD_L3CACHE,
+        HWCART_MD_NUMA,
+        HWCART_MD_SOCKET,
+        HWCART_MD_NODE,
+        HWCART_MD_CLUSTER
+    };
+    int m_order = HWCartOrderYZX;
+    int m_rank;
+    arr m_coord;
+    arr m_last_coord;
+    int m_threads_per_rank;
+
+public:
+    decomposition(
+        const arr& node_d,
+        const arr& socket_d,
+        const arr& numa_d,
+        const arr& l3_d,
+        const arr& rank_d,
+        const arr& thread_d)
+    : m_node_decomposition(node_d)
+    , m_socket_decomposition(socket_d)
+    , m_numa_decomposition(numa_d)
+    , m_L3_decomposition(l3_d)
+    , m_rank_decomposition(rank_d)
+    , m_thread_decomposition(thread_d)
+    , m_global_decomposition{
+        node_d[0]*socket_d[0]*numa_d[0]*l3_d[0]*rank_d[0],
+        node_d[1]*socket_d[1]*numa_d[1]*l3_d[1]*rank_d[1],
+        node_d[2]*socket_d[2]*numa_d[2]*l3_d[2]*rank_d[2]}
+    , m_topo{
+          rank_d[0],   rank_d[1],   rank_d[2], 
+            l3_d[0],     l3_d[1],     l3_d[2], 
+          numa_d[0],   numa_d[1],   numa_d[2], 
+        socket_d[0], socket_d[1], socket_d[2],
+          node_d[0],   node_d[1],   node_d[2]}
+    , m_last_coord{
+        m_global_decomposition[0]*thread_d[0]-1,
+        m_global_decomposition[1]*thread_d[1]-1,
+        m_global_decomposition[2]*thread_d[2]-1}
+    , m_threads_per_rank{thread_d[0]*thread_d[1]*thread_d[2]}
+    {
+        hwcart_create(MPI_COMM_WORLD, 5, m_levels.data(), m_topo.data(), m_order, &m_comm);
+        hwcart_print_rank_topology(m_comm, 5, m_levels.data(), m_topo.data(), m_order);
+        MPI_Comm_rank(m_comm, &m_rank);
+        hwcart_rank2coord(m_comm, m_global_decomposition.data(), m_rank, m_order, m_coord.data());
+        m_coord[0] *= thread_d[0];
+        m_coord[1] *= thread_d[1];
+        m_coord[2] *= thread_d[2];
+    }
+
+    decomposition(const decomposition&) = delete;
+
+    ~decomposition()
+    {
+        hwcart_free(&m_comm);
+    }
+
+    arr coord(int thread_id)
+    {
+        arr res(m_coord);
+        res[0] += thread_id%m_thread_decomposition[0];
+        thread_id/=m_thread_decomposition[0];
+        res[1] += thread_id%m_thread_decomposition[1];
+        thread_id/=m_thread_decomposition[1];
+        res[2] += thread_id;
+        return res;
+    }
+
+    auto mpi_comm() const noexcept { return m_comm; }
+    
+    const arr& last_coord() const noexcept { return m_last_coord; }
+
+    int threads_per_rank() const noexcept { return m_threads_per_rank; }
+};
 
 struct simulation
 {
@@ -67,10 +161,9 @@ struct simulation
 #ifdef __CUDACC__
     using gpu_field_type = field_descriptor_type<gridtools::ghex::gpu, 2, 1, 0>;
 #endif
-    using decomp_type = gridtools::ghex::hierarchical_decomposition<3>;
 
     int num_reps;
-    decomp_type decomp;
+    //decomp_type decomp;
     int num_threads;
     bool mt;
     const int num_fields;
@@ -109,14 +202,13 @@ struct simulation
         int ext_,
         int halo,
         int num_fields_,
-        const decomp_type& decomp_)
+        decomposition& decomp)
     : num_reps{num_reps_}
-    , decomp(decomp_)
     , num_threads(decomp.threads_per_rank())
     , mt(num_threads > 1)
     , num_fields{num_fields_}
     , ext{ext_}
-    , context_ptr{gridtools::ghex::tl::context_factory<transport>::create(MPI_COMM_WORLD)}
+    , context_ptr{gridtools::ghex::tl::context_factory<transport>::create(decomp.mpi_comm())}
     , context{*context_ptr}
     , local_ext{ext,ext,ext}
     , periodic{true,true,true}
@@ -148,7 +240,7 @@ struct simulation
 
         for (int j=0; j<num_threads; ++j)
         {
-            const auto coord = decomp(comm.rank(), j);
+            const auto coord = decomp.coord(j);
             int x = coord[0]*local_ext[0];
             int y = coord[1]*local_ext[1];
             int z = coord[2]*local_ext[2];
@@ -167,15 +259,16 @@ struct simulation
     {
         if (num_threads == 1)
         {
-            std::thread t([this](){exchange(0);});
-            // Create a cpu_set_t object representing a set of CPUs. Clear it and mark
-            // only CPU = local rank as set.
-            cpu_set_t cpuset;
-            CPU_ZERO(&cpuset);
-            CPU_SET(decomp.node_resource(comm.rank()), &cpuset);
-            int rc = pthread_setaffinity_np(t.native_handle(), sizeof(cpu_set_t), &cpuset);
-            if (rc != 0) { std::cerr << "Error calling pthread_setaffinity_np: " << rc << "\n"; }
-            t.join();
+            exchange(0);
+            //std::thread t([this](){exchange(0);});
+            //// Create a cpu_set_t object representing a set of CPUs. Clear it and mark
+            //// only CPU = local rank as set.
+            //cpu_set_t cpuset;
+            //CPU_ZERO(&cpuset);
+            //CPU_SET(decomp.node_resource(comm.rank()), &cpuset);
+            //int rc = pthread_setaffinity_np(t.native_handle(), sizeof(cpu_set_t), &cpuset);
+            //if (rc != 0) { std::cerr << "Error calling pthread_setaffinity_np: " << rc << "\n"; }
+            //t.join();
         }
         else
         {
@@ -184,13 +277,13 @@ struct simulation
             for (int j=0; j<num_threads; ++j)
             {
                 threads.push_back( std::thread([this,j](){ exchange(j); }) );
-                // Create a cpu_set_t object representing a set of CPUs. Clear it and mark
-                // only CPU j as set.
-                cpu_set_t cpuset;
-                CPU_ZERO(&cpuset);
-                CPU_SET(decomp.node_resource(comm.rank(),j), &cpuset);
-                int rc = pthread_setaffinity_np(threads[j].native_handle(), sizeof(cpu_set_t), &cpuset);
-                if (rc != 0) { std::cerr << "Error calling pthread_setaffinity_np: " << rc << "\n"; }
+                //// Create a cpu_set_t object representing a set of CPUs. Clear it and mark
+                //// only CPU j as set.
+                //cpu_set_t cpuset;
+                //CPU_ZERO(&cpuset);
+                //CPU_SET(decomp.node_resource(comm.rank(),j), &cpuset);
+                //int rc = pthread_setaffinity_np(threads[j].native_handle(), sizeof(cpu_set_t), &cpuset);
+                //if (rc != 0) { std::cerr << "Error calling pthread_setaffinity_np: " << rc << "\n"; }
             }
             for (auto& t : threads) t.join();
         }
@@ -198,7 +291,7 @@ struct simulation
 
     void exchange(int j)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        //std::this_thread::sleep_for(std::chrono::milliseconds(50));
         comms[j] = context.get_communicator();
         auto basic_co = gridtools::ghex::make_communication_object<pattern_type>(comms[j]);
         for (int i=0; i<num_fields; ++i)
@@ -289,7 +382,9 @@ void print_usage(const char* app_name)
         << "halo-size "
         << "num-fields "
         << "node-decompositon "
+        << "socket-decompositon "
         << "numa-decompositon "
+        << "L3-decompositon "
         << "rank-decompositon "
         << "thread-decompositon "
         << std::endl;
@@ -297,7 +392,7 @@ void print_usage(const char* app_name)
 
 int main(int argc, char** argv)
 {
-    if (argc != 17)
+    if (argc != 23)
     {
         print_usage(argv[0]);
         return 1;
@@ -308,7 +403,9 @@ int main(int argc, char** argv)
     int halo = std::atoi(argv[3]);
     int num_fields = std::atoi(argv[4]);
     std::array<int,3> node_decomposition;
+    std::array<int,3> socket_decomposition;
     std::array<int,3> numa_decomposition;
+    std::array<int,3> L3_decomposition;
     std::array<int,3> rank_decomposition;
     std::array<int,3> thread_decomposition;
     int num_ranks = 1;
@@ -316,15 +413,18 @@ int main(int argc, char** argv)
     for (int i = 0; i < 3; ++i)
     {
         node_decomposition[i] = std::atoi(argv[i+5]);
-        numa_decomposition[i] = std::atoi(argv[i+5+3]);
-        rank_decomposition[i] = std::atoi(argv[i+5+6]);
-        thread_decomposition[i] = std::atoi(argv[i+5+9]);
-        num_ranks *= node_decomposition[i]*numa_decomposition[i]*rank_decomposition[i];
+        socket_decomposition[i] = std::atoi(argv[i+5+3]);
+        numa_decomposition[i] = std::atoi(argv[i+5+6]);
+        L3_decomposition[i] = std::atoi(argv[i+5+9]);
+        rank_decomposition[i] = std::atoi(argv[i+5+12]);
+        thread_decomposition[i] = std::atoi(argv[i+5+15]);
+        num_ranks *= node_decomposition[i]
+            *socket_decomposition[i]
+            *numa_decomposition[i]
+            *L3_decomposition[i]
+            *rank_decomposition[i];
         num_threads *= thread_decomposition[i];
     }
-
-    typename simulation::decomp_type decomp(node_decomposition, numa_decomposition,
-        rank_decomposition, thread_decomposition);
 
     int required = num_threads>1 ?  MPI_THREAD_MULTIPLE :  MPI_THREAD_SINGLE;
     int provided;
@@ -352,12 +452,21 @@ int main(int argc, char** argv)
     }
 
     {
+        decomposition decomp(
+            node_decomposition,
+            socket_decomposition,
+            numa_decomposition,
+            L3_decomposition,
+            rank_decomposition,
+            thread_decomposition);
+
         simulation sim(num_repetitions, domain_size, halo, num_fields, decomp);
 
         sim.exchange();
     
         MPI_Barrier(MPI_COMM_WORLD);
     }
+
     MPI_Finalize();
 
     return 0;

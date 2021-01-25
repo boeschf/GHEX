@@ -73,6 +73,7 @@ foreach (_t ${_rma_benchmarks})
     target_compile_definitions(${t} PUBLIC GHEX_NO_RMA)
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # MPI, no rma, double, cpu
     # ========================
@@ -82,6 +83,7 @@ foreach (_t ${_rma_benchmarks})
     target_compile_definitions(${t} PUBLIC GHEX_NO_RMA)
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
 
     # MPI, threads, float, cpu
     # ========================
@@ -90,6 +92,7 @@ foreach (_t ${_rma_benchmarks})
     target_compile_definitions(${t} PUBLIC GHEX_FLOAT_TYPE=float)
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # MPI, threads, double, cpu
     # ========================
@@ -98,6 +101,7 @@ foreach (_t ${_rma_benchmarks})
     target_compile_definitions(${t} PUBLIC GHEX_FLOAT_TYPE=double)
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     if (GHEX_USE_XPMEM)
     # MPI, xpmem, float, cpu
@@ -108,6 +112,7 @@ foreach (_t ${_rma_benchmarks})
     target_compile_definitions(${t} PUBLIC GHEX_USE_XPMEM)
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # MPI, xpmem, double, cpu
     # ========================
@@ -117,6 +122,7 @@ foreach (_t ${_rma_benchmarks})
     target_compile_definitions(${t} PUBLIC GHEX_USE_XPMEM)
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     endif()
 
     if (GHEX_USE_UCP)
@@ -129,6 +135,7 @@ foreach (_t ${_rma_benchmarks})
     target_compile_definitions(${t} PUBLIC GHEX_NO_RMA)
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # UCX, no rma, double, cpu
     # ========================
@@ -139,6 +146,7 @@ foreach (_t ${_rma_benchmarks})
     target_compile_definitions(${t} PUBLIC GHEX_NO_RMA)
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
 
     # UCX, threads, float, cpu
     # ========================
@@ -148,6 +156,7 @@ foreach (_t ${_rma_benchmarks})
     target_compile_definitions(${t} PUBLIC GHEX_TEST_USE_UCX)
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # UCX, threads, double, cpu
     # ========================
@@ -157,6 +166,7 @@ foreach (_t ${_rma_benchmarks})
     target_compile_definitions(${t} PUBLIC GHEX_TEST_USE_UCX)
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     if (GHEX_USE_XPMEM)
     # UCX, xpmem, float, cpu
@@ -168,6 +178,7 @@ foreach (_t ${_rma_benchmarks})
     target_compile_definitions(${t} PUBLIC GHEX_TEST_USE_UCX)
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # UCX, xpmem, double, cpu
     # ========================
@@ -178,6 +189,7 @@ foreach (_t ${_rma_benchmarks})
     target_compile_definitions(${t} PUBLIC GHEX_TEST_USE_UCX)
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     endif()
     endif()
 
@@ -191,6 +203,7 @@ foreach (_t ${_rma_benchmarks})
     target_link_libraries(${t} GTest::gtest )
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # MPI, no rma, double, gpu
     # ========================
@@ -201,6 +214,7 @@ foreach (_t ${_rma_benchmarks})
     target_link_libraries(${t} GTest::gtest )
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # MPI, threads, float, gpu
     # ========================
@@ -210,6 +224,7 @@ foreach (_t ${_rma_benchmarks})
     target_link_libraries(${t} GTest::gtest )
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # MPI, threads, double, gpu
     # ========================
@@ -219,6 +234,7 @@ foreach (_t ${_rma_benchmarks})
     target_link_libraries(${t} GTest::gtest )
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     if (GHEX_USE_XPMEM)
     # MPI, xpmem, float, gpu
@@ -230,6 +246,7 @@ foreach (_t ${_rma_benchmarks})
     target_link_libraries(${t} GTest::gtest )
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # MPI, xpmem, double, gpu
     # ========================
@@ -240,6 +257,7 @@ foreach (_t ${_rma_benchmarks})
     target_link_libraries(${t} GTest::gtest )
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     endif()
 
     if (GHEX_USE_UCP)
@@ -253,6 +271,7 @@ foreach (_t ${_rma_benchmarks})
     target_link_libraries(${t} GTest::gtest )
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # UCX, no rma, double, gpu
     # ========================
@@ -264,6 +283,7 @@ foreach (_t ${_rma_benchmarks})
     target_link_libraries(${t} GTest::gtest )
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # UCX, threads, float, gpu
     # ========================
@@ -274,6 +294,7 @@ foreach (_t ${_rma_benchmarks})
     target_link_libraries(${t} GTest::gtest )
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # UCX, threads, double, gpu
     # ========================
@@ -284,6 +305,7 @@ foreach (_t ${_rma_benchmarks})
     target_link_libraries(${t} GTest::gtest )
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     if (GHEX_USE_XPMEM)
     # UCX, xpmem, float, gpu
@@ -296,6 +318,7 @@ foreach (_t ${_rma_benchmarks})
     target_link_libraries(${t} GTest::gtest )
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     
     # UCX, xpmem, double, gpu
     # ========================
@@ -307,6 +330,7 @@ foreach (_t ${_rma_benchmarks})
     target_link_libraries(${t} GTest::gtest )
     target_link_libraries(${t} ghexlib)
     target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
     endif()
     endif()
     endif()
