@@ -21,9 +21,8 @@
 #include <pthread.h>
 #include <thread>
 #include <vector>
-extern "C" {
-#include <hwcart.h>
-}
+
+#include "./util/decomposition.hpp"
 
 #ifndef GHEX_TEST_USE_UCX
 #include <ghex/transport_layer/mpi/context.hpp>
@@ -42,97 +41,6 @@ using transport = gridtools::ghex::tl::ucx_tag;
 #include <ghex/common/timer.hpp>
 
 using clock_type = std::chrono::high_resolution_clock;
-
-class decomposition
-{
-public:
-    using arr = std::array<int,3>;
-
-private:
-    MPI_Comm m_comm;
-    arr m_node_decomposition;
-    arr m_socket_decomposition;
-    arr m_numa_decomposition;
-    arr m_L3_decomposition;
-    arr m_rank_decomposition;
-    arr m_thread_decomposition;
-    arr m_global_decomposition;
-    std::array<int,3*5> m_topo;
-    std::array<int,5> m_levels = {
-        HWCART_MD_L3CACHE,
-        HWCART_MD_NUMA,
-        HWCART_MD_SOCKET,
-        HWCART_MD_NODE,
-        HWCART_MD_CLUSTER
-    };
-    int m_order = HWCartOrderYZX;
-    int m_rank;
-    arr m_coord;
-    arr m_last_coord;
-    int m_threads_per_rank;
-
-public:
-    decomposition(
-        const arr& node_d,
-        const arr& socket_d,
-        const arr& numa_d,
-        const arr& l3_d,
-        const arr& rank_d,
-        const arr& thread_d)
-    : m_node_decomposition(node_d)
-    , m_socket_decomposition(socket_d)
-    , m_numa_decomposition(numa_d)
-    , m_L3_decomposition(l3_d)
-    , m_rank_decomposition(rank_d)
-    , m_thread_decomposition(thread_d)
-    , m_global_decomposition{
-        node_d[0]*socket_d[0]*numa_d[0]*l3_d[0]*rank_d[0],
-        node_d[1]*socket_d[1]*numa_d[1]*l3_d[1]*rank_d[1],
-        node_d[2]*socket_d[2]*numa_d[2]*l3_d[2]*rank_d[2]}
-    , m_topo{
-          rank_d[0],   rank_d[1],   rank_d[2], 
-            l3_d[0],     l3_d[1],     l3_d[2], 
-          numa_d[0],   numa_d[1],   numa_d[2], 
-        socket_d[0], socket_d[1], socket_d[2],
-          node_d[0],   node_d[1],   node_d[2]}
-    , m_last_coord{
-        m_global_decomposition[0]*thread_d[0]-1,
-        m_global_decomposition[1]*thread_d[1]-1,
-        m_global_decomposition[2]*thread_d[2]-1}
-    , m_threads_per_rank{thread_d[0]*thread_d[1]*thread_d[2]}
-    {
-        hwcart_create(MPI_COMM_WORLD, 5, m_levels.data(), m_topo.data(), m_order, &m_comm);
-        MPI_Comm_rank(m_comm, &m_rank);
-        hwcart_rank2coord(m_comm, m_global_decomposition.data(), m_rank, m_order, m_coord.data());
-        m_coord[0] *= thread_d[0];
-        m_coord[1] *= thread_d[1];
-        m_coord[2] *= thread_d[2];
-    }
-
-    decomposition(const decomposition&) = delete;
-
-    ~decomposition()
-    {
-        hwcart_free(&m_comm);
-    }
-
-    arr coord(int thread_id)
-    {
-        arr res(m_coord);
-        res[0] += thread_id%m_thread_decomposition[0];
-        thread_id/=m_thread_decomposition[0];
-        res[1] += thread_id%m_thread_decomposition[1];
-        thread_id/=m_thread_decomposition[1];
-        res[2] += thread_id;
-        return res;
-    }
-
-    auto mpi_comm() const noexcept { return m_comm; }
-    
-    const arr& last_coord() const noexcept { return m_last_coord; }
-
-    int threads_per_rank() const noexcept { return m_threads_per_rank; }
-};
 
 struct simulation
 {
