@@ -298,3 +298,6 @@ endif()
 
 add_subdirectory(transport)
 add_subdirectory(cubed_sphere)
+if (GHEX_BUILD_FORTRAN)
+add_subdirectory(bindings)
+endif()
