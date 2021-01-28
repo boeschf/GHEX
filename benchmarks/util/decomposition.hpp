@@ -48,6 +48,7 @@ private:
     arr m_last_coord;
     int m_threads_per_rank;
     int m_rank;
+    int m_size;
     arr m_coord;
 
     static hwcart_order_t parse_order(std::string const & order_str)
@@ -85,7 +86,6 @@ private:
             m_global_decomposition[i] = 1;
             for (unsigned int j=0; j<m_levels.size(); ++j)
                 m_global_decomposition[i] *= m_topo[j*3+i];
-            std::cout << std::endl;
             m_last_coord[i] = m_global_decomposition[i]*m_thread_decomposition[i]-1;
         }
         m_threads_per_rank =
@@ -93,6 +93,7 @@ private:
             m_thread_decomposition[1]*
             m_thread_decomposition[2];
         MPI_Comm_rank(m_comm, &m_rank);
+        MPI_Comm_size(m_comm, &m_size);
         hwcart_rank2coord(m_comm, m_global_decomposition.data(), m_rank, m_order, m_coord.data());
         m_coord[0] *= m_thread_decomposition[0];
         m_coord[1] *= m_thread_decomposition[1];
@@ -255,6 +256,10 @@ public:
     }
 
     auto mpi_comm() const noexcept { return m_comm; }
+
+    int rank() const noexcept { return m_rank; }
+
+    int size() const noexcept { return m_size; }
     
     const arr& last_coord() const noexcept { return m_last_coord; }
 
