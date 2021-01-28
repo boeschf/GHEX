@@ -11,7 +11,11 @@
 
 #include <pthread.h>
 #include "./util/options.hpp"
-#include "./simple_rma_ghex.hpp"
+#ifdef GHEX_BENCHMARK_USE_RAW_MPI
+#include "./simple_rma/simple_rma_mpi.hpp"
+#else
+#include "./simple_rma/simple_rma_ghex.hpp"
+#endif
 
 int main(int argc, char** argv)
 {

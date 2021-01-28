@@ -334,6 +334,48 @@ foreach (_t ${_rma_benchmarks})
     endif()
     endif()
     endif()
+
+    # float, cpu
+    # ===========
+    set(t ${_t}_mpi_raw_float_cpu)
+    add_executable(${t} ${_t}.cpp)
+    target_compile_definitions(${t} PUBLIC GHEX_FLOAT_TYPE=float)
+    target_compile_definitions(${t} PUBLIC GHEX_BENCHMARK_USE_RAW_MPI)
+    target_link_libraries(${t} ghexlib)
+    target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
+    
+    # double, cpu
+    # ===========
+    set(t ${_t}_mpi_raw_double_cpu)
+    add_executable(${t} ${_t}.cpp)
+    target_compile_definitions(${t} PUBLIC GHEX_FLOAT_TYPE=double)
+    target_compile_definitions(${t} PUBLIC GHEX_BENCHMARK_USE_RAW_MPI)
+    target_link_libraries(${t} ghexlib)
+    target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
+
+    if(USE_GPU)
+    # float, gpu
+    # ===========
+    set(t ${_t}_mpi_raw_float_gpu)
+    add_executable(${t} ${_t}.cu)
+    target_compile_definitions(${t} PUBLIC GHEX_FLOAT_TYPE=float)
+    target_compile_definitions(${t} PUBLIC GHEX_BENCHMARK_USE_RAW_MPI)
+    target_link_libraries(${t} ghexlib)
+    target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
+    
+    # double, gpu
+    # ===========
+    set(t ${_t}_mpi_raw_double_gpu)
+    add_executable(${t} ${_t}.cu)
+    target_compile_definitions(${t} PUBLIC GHEX_FLOAT_TYPE=double)
+    target_compile_definitions(${t} PUBLIC GHEX_BENCHMARK_USE_RAW_MPI)
+    target_link_libraries(${t} ghexlib)
+    target_link_libraries(${t} OpenMP::OpenMP_CXX)
+    target_link_libraries(${t} HWCART::libhwcart)
+    endif()
 endforeach()
 
 

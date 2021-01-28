@@ -11,7 +11,6 @@
 
 #pragma once
 
-
 #include "./simple_rma_base.hpp"
 
 #ifndef GHEX_TEST_USE_UCX
@@ -93,11 +92,6 @@ struct simulation : public simulation_base<simulation>
                 context, halo_gen, local_domains)}};
     }
 
-    void step(int j)
-    {
-        cos[j].exchange().wait();
-    }
-
     void init(int j)
     {
         //std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -136,5 +130,10 @@ struct simulation : public simulation_base<simulation>
             bco.add_field(pattern->operator()(fields_gpu[j][i]));
 #endif
         cos[j] = std::move(bco);
+    }
+
+    void step(int j)
+    {
+        cos[j].exchange().wait();
     }
 };

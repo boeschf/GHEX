@@ -20,8 +20,8 @@
 #include <memory>
 #include <vector>
 
-#include "./util/decomposition.hpp"
-#include "./util/memory.hpp"
+#include "../util/decomposition.hpp"
+#include "../util/memory.hpp"
 #include <ghex/common/timer.hpp>
 
 using clock_type = std::chrono::high_resolution_clock;
