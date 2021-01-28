@@ -150,40 +150,6 @@ struct simulation
                 context, halo_gen, local_domains)}};
     }
 
-    void exchange()
-    {
-        if (num_threads == 1)
-        {
-            exchange(0);
-            //std::thread t([this](){exchange(0);});
-            //// Create a cpu_set_t object representing a set of CPUs. Clear it and mark
-            //// only CPU = local rank as set.
-            //cpu_set_t cpuset;
-            //CPU_ZERO(&cpuset);
-            //CPU_SET(decomp.node_resource(comm.rank()), &cpuset);
-            //int rc = pthread_setaffinity_np(t.native_handle(), sizeof(cpu_set_t), &cpuset);
-            //if (rc != 0) { std::cerr << "Error calling pthread_setaffinity_np: " << rc << "\n"; }
-            //t.join();
-        }
-        else
-        {
-            std::vector<std::thread> threads;
-            threads.reserve(num_threads);
-            for (int j=0; j<num_threads; ++j)
-            {
-                threads.push_back( std::thread([this,j](){ exchange(j); }) );
-                //// Create a cpu_set_t object representing a set of CPUs. Clear it and mark
-                //// only CPU j as set.
-                //cpu_set_t cpuset;
-                //CPU_ZERO(&cpuset);
-                //CPU_SET(decomp.node_resource(comm.rank(),j), &cpuset);
-                //int rc = pthread_setaffinity_np(threads[j].native_handle(), sizeof(cpu_set_t), &cpuset);
-                //if (rc != 0) { std::cerr << "Error calling pthread_setaffinity_np: " << rc << "\n"; }
-            }
-            for (auto& t : threads) t.join();
-        }
-    }
-
     void exchange(int j)
     {
         //std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -348,7 +314,36 @@ int main(int argc, char** argv)
             *decomp_ptr
         );
 
-        sim.exchange();
+        if (decomp_ptr->threads_per_rank() == 1)
+        {
+            sim.exchange(0);
+            //std::thread t([this](){exchange(0);});
+            //// Create a cpu_set_t object representing a set of CPUs. Clear it and mark
+            //// only CPU = local rank as set.
+            //cpu_set_t cpuset;
+            //CPU_ZERO(&cpuset);
+            //CPU_SET(decomp.node_resource(comm.rank()), &cpuset);
+            //int rc = pthread_setaffinity_np(t.native_handle(), sizeof(cpu_set_t), &cpuset);
+            //if (rc != 0) { std::cerr << "Error calling pthread_setaffinity_np: " << rc << "\n"; }
+            //t.join();
+        }
+        else
+        {
+            std::vector<std::thread> threads;
+            threads.reserve(num_threads);
+            for (int j=0; j<num_threads; ++j)
+            {
+                threads.push_back( std::thread([&sim,j](){ sim.exchange(j); }) );
+                //// Create a cpu_set_t object representing a set of CPUs. Clear it and mark
+                //// only CPU j as set.
+                //cpu_set_t cpuset;
+                //CPU_ZERO(&cpuset);
+                //CPU_SET(decomp.node_resource(comm.rank(),j), &cpuset);
+                //int rc = pthread_setaffinity_np(threads[j].native_handle(), sizeof(cpu_set_t), &cpuset);
+                //if (rc != 0) { std::cerr << "Error calling pthread_setaffinity_np: " << rc << "\n"; }
+            }
+            for (auto& t : threads) t.join();
+        }
     
         MPI_Barrier(MPI_COMM_WORLD);
     }
