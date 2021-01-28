@@ -9,7 +9,7 @@
  *
  */
 
-// taken from GTBENCH
+// adapted from GTBENCH
 #pragma once
 
 #include <algorithm>
@@ -18,6 +18,7 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -38,6 +39,10 @@ class options_values {
 public:
   bool has(std::string const &name) const {
     return m_map.find(name) != m_map.end();
+  }
+
+  bool is_set(std::string const &name) const {
+    return m_set.find(name) != m_set.end();
   }
 
   template <class T> T get(std::string const &name) const {
@@ -84,6 +89,7 @@ private:
   }
 
   std::map<std::string, std::vector<std::string>> m_map;
+  std::set<std::string> m_set;
 
   friend class options;
 };
@@ -95,6 +101,10 @@ class options {
     std::string variable;
     std::vector<std::string> default_values;
     std::size_t nargs;
+  };
+  struct flag {
+    std::string name;
+    std::string description;
   };
 
 public:
@@ -110,35 +120,46 @@ public:
 
       if (arg[0] == '-' && arg[1] == '-') {
         std::string name = arg.substr(2);
-        auto opt =
-            std::find_if(m_options.begin(), m_options.end(),
-                         [&](option const &o) { return o.name == name; });
-        if (opt == m_options.end()) {
-          options_impl::abort("unkown option: '" + arg + "'\n" +
-                              help_message(argv[0]));
-        }
 
-        if (parsed.m_map.find(name) != parsed.m_map.end()) {
-          options_impl::abort("multiple occurences of '" + arg + "'\n" +
-                              help_message(argv[0]));
-        }
-
-        std::vector<std::string> values;
-        for (std::size_t j = 0; j < opt->nargs; ++j, ++i) {
-          if (i + 1 >= argc) {
-            options_impl::abort(
-                "unexpected end of arguments while parsing args for '" + arg +
-                "'\n" + help_message(argv[0]));
-          }
-          std::string value(argv[i + 1]);
-          if (value[0] == '-' && value[1] == '-')
-            options_impl::abort("expected argument for option '" + arg +
-                                "', found '" + value + "'\n" +
+        auto flg = std::find_if(m_flags.begin(), m_flags.end(),
+                                [&](flag const &f) { return f.name == name; });
+        if (flg != m_flags.end()) {
+          if (parsed.m_set.find(name) != parsed.m_set.end()) {
+            options_impl::abort("multiple occurences of '" + arg + "'\n" +
                                 help_message(argv[0]));
-          values.push_back(value);
-        }
+          }
+          parsed.m_set.insert(name);
+        } else {
+          auto opt =
+              std::find_if(m_options.begin(), m_options.end(),
+                           [&](option const &o) { return o.name == name; });
+          if (opt == m_options.end()) {
+            options_impl::abort("unkown option: '" + arg + "'\n" +
+                                help_message(argv[0]));
+          }
 
-        parsed.m_map[name] = values;
+          if (parsed.m_map.find(name) != parsed.m_map.end()) {
+            options_impl::abort("multiple occurences of '" + arg + "'\n" +
+                                help_message(argv[0]));
+          }
+
+          std::vector<std::string> values;
+          for (std::size_t j = 0; j < opt->nargs; ++j, ++i) {
+            if (i + 1 >= argc) {
+              options_impl::abort(
+                  "unexpected end of arguments while parsing args for '" + arg +
+                  "'\n" + help_message(argv[0]));
+            }
+            std::string value(argv[i + 1]);
+            if (value[0] == '-' && value[1] == '-')
+              options_impl::abort("expected argument for option '" + arg +
+                                  "', found '" + value + "'\n" +
+                                  help_message(argv[0]));
+            values.push_back(value);
+          }
+
+          parsed.m_map[name] = values;
+        }
       } else {
         options_impl::abort("unexpected token: '" + arg +
                             "' (too many arguments provided?)\n" +
@@ -154,6 +175,10 @@ public:
     }
 
     return parsed;
+  }
+
+  options &operator()(std::string const &name, std::string const &description) {
+    return add(name, description);
   }
 
   options &operator()(std::string const &name, std::string const &description,
@@ -176,6 +201,11 @@ public:
   }
 
 private:
+  options &add(std::string const &name, std::string const &description) {
+    m_flags.push_back({name, description});
+    return *this;
+  }
+
   options &add(std::string const &name, std::string const &description,
                std::string const &variable,
                std::vector<std::string> const &default_values,
@@ -190,6 +220,9 @@ private:
     out << "usage: " << command << " [options...]" << std::endl;
 
     std::size_t max_opt_len = 4;
+    for (flag const &flg : m_flags) {
+      max_opt_len = std::max(flg.name.size(), max_opt_len);
+    }
     for (option const &opt : m_options) {
       max_opt_len =
           std::max(opt.name.size() + opt.variable.size(), max_opt_len);
@@ -211,6 +244,10 @@ private:
 
     print("--help", "print this help message and exit");
 
+    for (flag const &flg : m_flags) {
+      print("--" + flg.name, flg.description);
+    }
+
     for (option const &opt : m_options) {
       print("--" + opt.name + " " + opt.variable, opt.description,
             opt.default_values);
@@ -220,6 +257,7 @@ private:
   }
 
   std::vector<option> m_options;
+  std::vector<flag> m_flags;
 };
 
 } // namespace ghex

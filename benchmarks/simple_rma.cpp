@@ -42,6 +42,7 @@ using transport = gridtools::ghex::tl::ucx_tag;
 #include <ghex/structured/regular/halo_generator.hpp>
 #include <ghex/common/timer.hpp>
 
+
 using clock_type = std::chrono::high_resolution_clock;
 
 struct simulation
@@ -237,6 +238,7 @@ int main(int argc, char** argv)
         ("nrep",     "number of repetitions", "r",        {10})
         ("nfields",  "number of fields",      "n",        {1})
         ("halo",     "halo size",             "h",        {1})
+        ("order",    "cartesian order",       "IJK",      {"XYZ"})
         ("node",     "node grid",             "NX NY NZ", 3)
         ("socket",   "socket grid",           "NX NY NZ", 3)
         ("numa",     "numa-node grid",        "NX NY NZ", 3)
@@ -244,6 +246,7 @@ int main(int argc, char** argv)
         ("core",     "core grid",             "NX NY NZ", 3)
         ("hwthread", "hardware-thread grid",  "NX NY NZ", 3)
         ("thread",   "software-thread grid",  "NX NY NZ", {1,1,1})
+        ("print",    "print decomposition")
         .parse(argc, argv);
 
     const auto threads = options.get<std::array<int,3>>("thread");
@@ -263,11 +266,15 @@ int main(int argc, char** argv)
         std::terminate();
     }
 
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
     {
         std::unique_ptr<ghex::bench::decomposition> decomp_ptr;
         
         if (options.has("hwthread"))
             decomp_ptr = std::make_unique<ghex::bench::decomposition>(
+                options.get<std::string>("order"),
                 options.get_or("node",   std::array<int,3>{1,1,1}),
                 options.get_or("socket", std::array<int,3>{1,1,1}),
                 options.get_or("numa",   std::array<int,3>{1,1,1}),
@@ -277,6 +284,7 @@ int main(int argc, char** argv)
                 threads);
         else if (options.has("core"))
             decomp_ptr = std::make_unique<ghex::bench::decomposition>(
+                options.get<std::string>("order"),
                 options.get_or("node",   std::array<int,3>{1,1,1}),
                 options.get_or("socket", std::array<int,3>{1,1,1}),
                 options.get_or("numa",   std::array<int,3>{1,1,1}),
@@ -285,6 +293,7 @@ int main(int argc, char** argv)
                 threads);
         else if (options.has("l3"))
             decomp_ptr = std::make_unique<ghex::bench::decomposition>(
+                options.get<std::string>("order"),
                 options.get_or("node",   std::array<int,3>{1,1,1}),
                 options.get_or("socket", std::array<int,3>{1,1,1}),
                 options.get_or("numa",   std::array<int,3>{1,1,1}),
@@ -292,19 +301,25 @@ int main(int argc, char** argv)
                 threads);
         else if (options.has("numa"))
             decomp_ptr = std::make_unique<ghex::bench::decomposition>(
+                options.get<std::string>("order"),
                 options.get_or("node",   std::array<int,3>{1,1,1}),
                 options.get_or("socket", std::array<int,3>{1,1,1}),
                 options.get<std::array<int,3>>("numa"),
                 threads);
         else if (options.has("socket"))
             decomp_ptr = std::make_unique<ghex::bench::decomposition>(
+                options.get<std::string>("order"),
                 options.get_or("node",   std::array<int,3>{1,1,1}),
                 options.get<std::array<int,3>>("socket"),
                 threads);
         else 
             decomp_ptr = std::make_unique<ghex::bench::decomposition>(
+                options.get<std::string>("order"),
                 options.get_or("node",   std::array<int,3>{1,1,1}),
                 threads);
+
+        if (options.is_set("print") && rank == 0)
+            decomp_ptr->print();
 
         simulation sim(
             options.get<int>("nrep"), 

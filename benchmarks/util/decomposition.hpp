@@ -14,6 +14,8 @@
 #include <array>
 #include <vector>
 #include <stdexcept>
+#include <string>
+#include <iostream>
 
 extern "C" {
 #include <hwcart.h>
@@ -37,6 +39,7 @@ private:
         }
     };
     hw_topo_t m_hw_topo;
+    hwcart_order_t m_order = HWCartOrderYZX;
     MPI_Comm m_comm;
     arr m_node_decomposition = {1,1,1};
     arr m_socket_decomposition = {1,1,1};
@@ -47,8 +50,7 @@ private:
     arr m_thread_decomposition = {1,1,1};
     arr m_global_decomposition;
     std::vector<int> m_topo;
-    std::vector<int> m_levels;
-    int m_order = HWCartOrderYZX;
+    std::vector<hwcart_split_t> m_levels;
     int m_rank;
     arr m_coord;
     arr m_last_coord;
@@ -56,6 +58,7 @@ private:
 
     void init()
     {
+        hwcart_create(m_hw_topo.m, MPI_COMM_WORLD, m_levels.size(), m_levels.data(), m_topo.data(), m_order, &m_comm);
         for (int i=0; i<3; ++i)
         {
             m_global_decomposition[i] = 
@@ -78,11 +81,34 @@ private:
         m_coord[2] *= m_thread_decomposition[2];
     }
 
+    static hwcart_order_t parse_order(std::string const & order_str)
+    {
+        if (order_str == "XYZ")
+            return HWCartOrderXYZ;
+        else if (order_str == "XZY")
+            return HWCartOrderXZY;
+        else if (order_str == "ZYX")
+            return HWCartOrderZYX;
+        else if (order_str == "YZX")
+            return HWCartOrderYZX;
+        else if (order_str == "ZXY")
+            return HWCartOrderZXY;
+        else if (order_str == "YXZ")
+            return HWCartOrderYXZ;
+        else
+        {
+            std::cout << "warning: unrecognized order, using XYZ" << std::endl;
+            return HWCartOrderXYZ;
+        }
+    }
+
 public:
     decomposition(
+        const std::string& order, 
         const arr& node_d,
         const arr& thread_d)
     : m_hw_topo()
+    , m_order{parse_order(order)}
     , m_node_decomposition(node_d)
     , m_thread_decomposition(thread_d)
     , m_topo{
@@ -90,15 +116,16 @@ public:
     , m_levels{
         HWCART_MD_NODE}
     {
-        hwcart_create(m_hw_topo.m, MPI_COMM_WORLD, 1, m_levels.data(), m_topo.data(), m_order, &m_comm);
         init();
     }
 
     decomposition(
+        const std::string& order, 
         const arr& node_d,
         const arr& socket_d,
         const arr& thread_d)
     : m_hw_topo()
+    , m_order{parse_order(order)}
     , m_node_decomposition(node_d)
     , m_socket_decomposition(socket_d)
     , m_thread_decomposition(thread_d)
@@ -109,16 +136,17 @@ public:
         HWCART_MD_SOCKET,
         HWCART_MD_NODE}
     {
-        hwcart_create(m_hw_topo.m, MPI_COMM_WORLD, 2, m_levels.data(), m_topo.data(), m_order, &m_comm);
         init();
     }
 
     decomposition(
+        const std::string& order, 
         const arr& node_d,
         const arr& socket_d,
         const arr& numa_d,
         const arr& thread_d)
     : m_hw_topo()
+    , m_order{parse_order(order)}
     , m_node_decomposition(node_d)
     , m_socket_decomposition(socket_d)
     , m_numa_decomposition(numa_d)
@@ -132,17 +160,18 @@ public:
         HWCART_MD_SOCKET,
         HWCART_MD_NODE}
     {
-        hwcart_create(m_hw_topo.m, MPI_COMM_WORLD, 3, m_levels.data(), m_topo.data(), m_order, &m_comm);
         init();
     }
 
     decomposition(
+        const std::string& order, 
         const arr& node_d,
         const arr& socket_d,
         const arr& numa_d,
         const arr& l3_d,
         const arr& thread_d)
     : m_hw_topo()
+    , m_order{parse_order(order)}
     , m_node_decomposition(node_d)
     , m_socket_decomposition(socket_d)
     , m_numa_decomposition(numa_d)
@@ -159,11 +188,11 @@ public:
         HWCART_MD_SOCKET,
         HWCART_MD_NODE}
     {
-        hwcart_create(m_hw_topo.m, MPI_COMM_WORLD, 4, m_levels.data(), m_topo.data(), m_order, &m_comm);
         init();
     }
 
     decomposition(
+        const std::string& order, 
         const arr& node_d,
         const arr& socket_d,
         const arr& numa_d,
@@ -171,6 +200,7 @@ public:
         const arr& core_d,
         const arr& thread_d)
     : m_hw_topo()
+    , m_order{parse_order(order)}
     , m_node_decomposition(node_d)
     , m_socket_decomposition(socket_d)
     , m_numa_decomposition(numa_d)
@@ -190,11 +220,11 @@ public:
         HWCART_MD_SOCKET,
         HWCART_MD_NODE}
     {
-        hwcart_create(m_hw_topo.m, MPI_COMM_WORLD, 5, m_levels.data(), m_topo.data(), m_order, &m_comm);
         init();
     }
 
     decomposition(
+        const std::string& order, 
         const arr& node_d,
         const arr& socket_d,
         const arr& numa_d,
@@ -203,6 +233,7 @@ public:
         const arr& hwthread_d,
         const arr& thread_d)
     : m_hw_topo()
+    , m_order{parse_order(order)}
     , m_node_decomposition(node_d)
     , m_socket_decomposition(socket_d)
     , m_numa_decomposition(numa_d)
@@ -225,7 +256,6 @@ public:
         HWCART_MD_SOCKET,
         HWCART_MD_NODE}
     {
-        hwcart_create(m_hw_topo.m, MPI_COMM_WORLD, 6, m_levels.data(), m_topo.data(), m_order, &m_comm);
         init();
     }
 
@@ -252,6 +282,12 @@ public:
     const arr& last_coord() const noexcept { return m_last_coord; }
 
     int threads_per_rank() const noexcept { return m_threads_per_rank; }
+
+    void print()
+    {
+        std::cout << "should print the stuff now" << std::endl;
+        hwcart_print_rank_topology(m_hw_topo.m, MPI_COMM_WORLD, m_levels.size(), m_levels.data(), m_topo.data(), m_order);
+    }
 };
 
 } // namespace bench
