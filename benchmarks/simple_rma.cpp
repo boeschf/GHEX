@@ -42,7 +42,6 @@ using transport = gridtools::ghex::tl::ucx_tag;
 #include <ghex/structured/regular/halo_generator.hpp>
 #include <ghex/common/timer.hpp>
 
-
 using clock_type = std::chrono::high_resolution_clock;
 
 struct simulation
@@ -272,6 +271,7 @@ int main(int argc, char** argv)
     {
         std::unique_ptr<ghex::bench::decomposition> decomp_ptr;
         
+        try {
         if (options.has("hwthread"))
             decomp_ptr = std::make_unique<ghex::bench::decomposition>(
                 options.get<std::string>("order"),
@@ -317,9 +317,25 @@ int main(int argc, char** argv)
                 options.get<std::string>("order"),
                 options.get_or("node",   std::array<int,3>{1,1,1}),
                 threads);
+        }
+        catch (...)
+        {
+            if (rank == 0)
+                std::cout << "could not create decomposition" << std::endl;
+            MPI_Finalize();
+            return 0;
+        }
 
-        if (options.is_set("print") && rank == 0)
-            decomp_ptr->print();
+        if (options.is_set("print"))
+        {
+            if (rank == 0)
+                decomp_ptr->print();
+            MPI_Barrier(MPI_COMM_WORLD);
+            decomp_ptr.release();
+            MPI_Barrier(MPI_COMM_WORLD);
+            MPI_Finalize();
+            return 0;
+        }
 
         simulation sim(
             options.get<int>("nrep"), 

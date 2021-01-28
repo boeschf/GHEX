@@ -58,7 +58,8 @@ private:
 
     void init()
     {
-        hwcart_create(m_hw_topo.m, MPI_COMM_WORLD, m_levels.size(), m_levels.data(), m_topo.data(), m_order, &m_comm);
+        if (hwcart_create(m_hw_topo.m, MPI_COMM_WORLD, m_levels.size(), m_levels.data(), m_topo.data(), m_order, &m_comm))
+                throw std::runtime_error("hwcart create failed");
         for (int i=0; i<3; ++i)
         {
             m_global_decomposition[i] = 
