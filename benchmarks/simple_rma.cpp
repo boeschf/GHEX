@@ -9,7 +9,6 @@
  *
  */
 
-#include <pthread.h>
 #include "./util/options.hpp"
 #ifdef GHEX_BENCHMARK_USE_RAW_MPI
 #include "./simple_rma/simple_rma_mpi.hpp"

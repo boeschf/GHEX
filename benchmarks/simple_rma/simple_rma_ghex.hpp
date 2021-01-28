@@ -94,11 +94,9 @@ struct simulation : public simulation_base<simulation>
 
     void init(int j)
     {
-        //std::this_thread::sleep_for(std::chrono::milliseconds(50));
         comms[j] = context.get_communicator();
         for (int i=0; i<num_fields; ++i)
         {
-            raw_fields[j].emplace_back(max_memory, 0);
             fields[j].push_back(gridtools::ghex::wrap_field<gridtools::ghex::cpu,2,1,0>(
                 local_domains[j],
                 raw_fields[j].back().host_data(),

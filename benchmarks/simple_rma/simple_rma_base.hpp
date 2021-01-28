@@ -19,6 +19,7 @@
 #include <array>
 #include <memory>
 #include <vector>
+//#include <pthread.h>
 
 #include "../util/decomposition.hpp"
 #include "../util/memory.hpp"
@@ -85,6 +86,9 @@ struct simulation_base
 
     void exchange(int j)
     {
+        //std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        for (int i=0; i<num_fields; ++i)
+            raw_fields[j].emplace_back(max_memory, 0);
         static_cast<Derived*>(this)->init(j);
 
         // warm up
