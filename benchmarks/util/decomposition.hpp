@@ -40,7 +40,7 @@ private:
     };
     hw_topo_t m_hw_topo;
     hwcart_order_t m_order = HWCartOrderYZX;
-    arr m_thread_decomposition = {1,1,1};
+    arr m_thread_decomposition;
     std::vector<int> m_topo;
     std::vector<hwcart_split_t> m_levels;
     MPI_Comm m_comm;
@@ -71,7 +71,7 @@ private:
         }
     }
 
-    decomposition( const std::string& order, std::vector<int>&& topo, std::vector<hwcart_split_t>&& levels, const arr& thread_d)
+    decomposition(const std::string& order, const arr& thread_d, std::vector<int>&& topo, std::vector<hwcart_split_t>&& levels)
     : m_hw_topo()
     , m_order{parse_order(order)}
     , m_thread_decomposition(thread_d)
@@ -85,6 +85,7 @@ private:
             m_global_decomposition[i] = 1;
             for (unsigned int j=0; j<m_levels.size(); ++j)
                 m_global_decomposition[i] *= m_topo[j*3+i];
+            std::cout << std::endl;
             m_last_coord[i] = m_global_decomposition[i]*m_thread_decomposition[i]-1;
         }
         m_threads_per_rank =
@@ -96,6 +97,18 @@ private:
         m_coord[0] *= m_thread_decomposition[0];
         m_coord[1] *= m_thread_decomposition[1];
         m_coord[2] *= m_thread_decomposition[2];
+        //if (m_rank == 0)
+        //{
+        //    for (unsigned int j=0; j<m_levels.size(); ++j)
+        //    {
+        //        for (int i=0; i<3; ++i)
+        //        {
+        //            std::cout << m_topo[j*3+i] << " ";
+        //        }
+        //        std::cout << std::endl;
+        //    }
+        //}
+        //std::cout << m_coord[0] << " " << m_coord[1] << " " << m_coord[2] << std::endl;
     }
 
 public:
@@ -105,11 +118,11 @@ public:
         const arr& thread_d)
     : decomposition(
         order,
+        thread_d,
         std::vector<int>{
               node_d[0],     node_d[1],     node_d[2]},
         std::vector<hwcart_split_t>{
-            HWCART_MD_NODE},
-        thread_d)
+            HWCART_MD_NODE})
     { }
 
     decomposition(
@@ -119,13 +132,13 @@ public:
         const arr& thread_d)
     : decomposition(
         order,
+        thread_d,
         std::vector<int>{
             socket_d[0],   socket_d[1],   socket_d[2],
               node_d[0],     node_d[1],     node_d[2]},
         std::vector<hwcart_split_t>{
             HWCART_MD_SOCKET,
-            HWCART_MD_NODE},
-        thread_d)
+            HWCART_MD_NODE})
     { }
 
     decomposition(
@@ -136,6 +149,7 @@ public:
         const arr& thread_d)
     : decomposition(
         order,
+        thread_d,
         std::vector<int>{
               numa_d[0],     numa_d[1],     numa_d[2], 
             socket_d[0],   socket_d[1],   socket_d[2],
@@ -143,8 +157,7 @@ public:
         std::vector<hwcart_split_t>{
             HWCART_MD_NUMA,
             HWCART_MD_SOCKET,
-            HWCART_MD_NODE},
-        thread_d)
+            HWCART_MD_NODE})
     { }
 
     decomposition(
@@ -156,6 +169,7 @@ public:
         const arr& thread_d)
     : decomposition(
         order,
+        thread_d,
         std::vector<int>{
                 l3_d[0],       l3_d[1],       l3_d[2], 
               numa_d[0],     numa_d[1],     numa_d[2], 
@@ -165,8 +179,7 @@ public:
             HWCART_MD_L3CACHE,
             HWCART_MD_NUMA,
             HWCART_MD_SOCKET,
-            HWCART_MD_NODE},
-        thread_d)
+            HWCART_MD_NODE})
     { }
 
     decomposition(
@@ -179,6 +192,7 @@ public:
         const arr& thread_d)
     : decomposition(
         order,
+        thread_d,
         std::vector<int>{
               core_d[0],     core_d[1],     core_d[2], 
                 l3_d[0],       l3_d[1],       l3_d[2], 
@@ -190,8 +204,7 @@ public:
             HWCART_MD_L3CACHE,
             HWCART_MD_NUMA,
             HWCART_MD_SOCKET,
-            HWCART_MD_NODE},
-        thread_d)
+            HWCART_MD_NODE})
     { }
 
     decomposition(
@@ -205,6 +218,7 @@ public:
         const arr& thread_d)
     : decomposition(
         order,
+        thread_d,
         std::vector<int>{
           hwthread_d[0], hwthread_d[1], hwthread_d[2], 
               core_d[0],     core_d[1],     core_d[2], 
@@ -218,8 +232,7 @@ public:
             HWCART_MD_L3CACHE,
             HWCART_MD_NUMA,
             HWCART_MD_SOCKET,
-            HWCART_MD_NODE},
-        thread_d)
+            HWCART_MD_NODE})
     {
     }
 
