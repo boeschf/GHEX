@@ -23,6 +23,8 @@
 #include <vector>
 
 #include "./util/decomposition.hpp"
+#include "./util/memory.hpp"
+#include "./util/options.hpp"
 
 #ifndef GHEX_TEST_USE_UCX
 #include <ghex/transport_layer/mpi/context.hpp>
@@ -44,19 +46,8 @@ using clock_type = std::chrono::high_resolution_clock;
 
 struct simulation
 {
-#ifdef __CUDACC__
-    template<typename T>
-    struct cuda_deleter
-    {
-        void operator()(T* ptr)
-        {
-            cudaFree(ptr);
-        }
-    };
-#endif
-
     using T = GHEX_FLOAT_TYPE;
-
+    using raw_field_type = ghex::bench::memory<T>;
     using context_type = typename gridtools::ghex::tl::context_factory<transport>::context_type;
     using context_ptr_type = std::unique_ptr<context_type>;
     using domain_descriptor_type = gridtools::ghex::structured::regular::domain_descriptor<int,3>;
@@ -70,7 +61,6 @@ struct simulation
 #endif
 
     int num_reps;
-    //decomp_type decomp;
     int num_threads;
     bool mt;
     const int num_fields;
@@ -87,10 +77,9 @@ struct simulation
     halo_generator_type halo_gen;
     std::vector<domain_descriptor_type> local_domains;
     const int max_memory;
-    std::vector<std::vector<std::vector<T>>> fields_raw;
+    std::vector<std::vector<raw_field_type>> raw_fields;
     std::vector<std::vector<field_type>> fields;
 #ifdef __CUDACC__
-    std::vector<std::vector<std::unique_ptr<T,cuda_deleter<T>>>> fields_raw_gpu;
     std::vector<std::vector<gpu_field_type>> fields_gpu;
 #endif
     typename context_type::communicator_type comm;
@@ -109,7 +98,7 @@ struct simulation
         int ext_,
         int halo,
         int num_fields_,
-        decomposition& decomp)
+        ghex::bench::decomposition& decomp)
     : num_reps{num_reps_}
     , num_threads(decomp.threads_per_rank())
     , mt(num_threads > 1)
@@ -137,10 +126,9 @@ struct simulation
     {
         cos.resize(num_threads);
         local_domains.reserve(num_threads);
-        fields_raw.resize(num_threads);
+        raw_fields.resize(num_threads);
         fields.resize(num_threads);
 #ifdef __CUDACC__
-        fields_raw_gpu.resize(num_threads);
         fields_gpu.resize(num_threads);
 #endif
         comms = std::vector<typename context_type::communicator_type>(num_threads, comm);
@@ -203,18 +191,16 @@ struct simulation
         auto basic_co = gridtools::ghex::make_communication_object<pattern_type>(comms[j]);
         for (int i=0; i<num_fields; ++i)
         {
-            fields_raw[j].push_back( std::vector<T>(max_memory) );
+            raw_fields[j].emplace_back(max_memory, 0);
             fields[j].push_back(gridtools::ghex::wrap_field<gridtools::ghex::cpu,2,1,0>(
                 local_domains[j],
-                fields_raw[j].back().data(),
+                raw_fields[j].back().host_data(),
                 offset,
                 local_ext_buffer));
 #ifdef __CUDACC__
-            fields_raw_gpu[j].push_back( std::unique_ptr<T,cuda_deleter<T>>{
-                [this](){ void* ptr; cudaMalloc(&ptr, max_memory*sizeof(T)); return (T*)ptr; }()});
             fields_gpu[j].push_back(gridtools::ghex::wrap_field<gridtools::ghex::gpu,2,1,0>(
                 local_domains[j],
-                fields_raw_gpu[j].back().get(),
+                raw_fields[j].back().device_data(),
                 offset,
                 local_ext_buffer));
 #endif
@@ -278,59 +264,25 @@ struct simulation
     }
 };
 
-void print_usage(const char* app_name)
-{
-    std::cout
-        << "<mpi-launcher> -np N " << app_name << " "
-        << "local-domain-size "
-        << "num-repetition "
-        << "halo-size "
-        << "num-fields "
-        << "node-decompositon "
-        << "socket-decompositon "
-        << "numa-decompositon "
-        << "L3-decompositon "
-        << "rank-decompositon "
-        << "thread-decompositon "
-        << std::endl;
-}
-
 int main(int argc, char** argv)
 {
-    if (argc != 23)
-    {
-        print_usage(argv[0]);
-        return 1;
-    }
+    const auto options = ghex::options()
+        ("domain",   "local domain size",     "d",        {64})
+        ("nrep",     "number of repetitions", "r",        {10})
+        ("nfields",  "number of fields",      "n",        {1})
+        ("halo",     "halo size",             "h",        {1})
+        ("node",     "node grid",             "NX NY NZ", 3)
+        ("socket",   "socket grid",           "NX NY NZ", 3)
+        ("numa",     "numa-node grid",        "NX NY NZ", 3)
+        ("l3",       "l3-cache grid",         "NX NY NZ", 3)
+        ("core",     "core grid",             "NX NY NZ", 3)
+        ("hwthread", "hardware-thread grid",  "NX NY NZ", 3)
+        ("thread",   "software-thread grid",  "NX NY NZ", {1,1,1})
+        .parse(argc, argv);
 
-    int domain_size = std::atoi(argv[1]);
-    int num_repetitions = std::atoi(argv[2]);
-    int halo = std::atoi(argv[3]);
-    int num_fields = std::atoi(argv[4]);
-    std::array<int,3> node_decomposition;
-    std::array<int,3> socket_decomposition;
-    std::array<int,3> numa_decomposition;
-    std::array<int,3> L3_decomposition;
-    std::array<int,3> rank_decomposition;
-    std::array<int,3> thread_decomposition;
-    int num_ranks = 1;
-    int num_threads = 1;
-    for (int i = 0; i < 3; ++i)
-    {
-        node_decomposition[i] = std::atoi(argv[i+5]);
-        socket_decomposition[i] = std::atoi(argv[i+5+3]);
-        numa_decomposition[i] = std::atoi(argv[i+5+6]);
-        L3_decomposition[i] = std::atoi(argv[i+5+9]);
-        rank_decomposition[i] = std::atoi(argv[i+5+12]);
-        thread_decomposition[i] = std::atoi(argv[i+5+15]);
-        num_ranks *= node_decomposition[i]
-            *socket_decomposition[i]
-            *numa_decomposition[i]
-            *L3_decomposition[i]
-            *rank_decomposition[i];
-        num_threads *= thread_decomposition[i];
-    }
-
+    const auto threads = options.get<std::array<int,3>>("thread");
+    const auto num_threads = threads[0]*threads[1]*threads[2];
+    
     int required = num_threads>1 ?  MPI_THREAD_MULTIPLE :  MPI_THREAD_SINGLE;
     int provided;
     int init_result = MPI_Init_thread(&argc, &argv, required, &provided);
@@ -345,27 +297,56 @@ int main(int argc, char** argv)
         std::terminate();
     }
 
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    int world_size;
-    MPI_Comm_size(MPI_COMM_WORLD,&world_size);
-    if (world_size != num_ranks)
     {
-        std::cout << "processor decomposition is wrong" << std::endl;
-        print_usage(argv[0]);
-        return 1;
-    }
+        std::unique_ptr<ghex::bench::decomposition> decomp_ptr;
+        
+        if (options.has("hwthread"))
+            decomp_ptr = std::make_unique<ghex::bench::decomposition>(
+                options.get_or("node",   std::array<int,3>{1,1,1}),
+                options.get_or("socket", std::array<int,3>{1,1,1}),
+                options.get_or("numa",   std::array<int,3>{1,1,1}),
+                options.get_or("l3",     std::array<int,3>{1,1,1}),
+                options.get_or("core",   std::array<int,3>{1,1,1}),
+                options.get<std::array<int,3>>("hwthread"),
+                threads);
+        else if (options.has("core"))
+            decomp_ptr = std::make_unique<ghex::bench::decomposition>(
+                options.get_or("node",   std::array<int,3>{1,1,1}),
+                options.get_or("socket", std::array<int,3>{1,1,1}),
+                options.get_or("numa",   std::array<int,3>{1,1,1}),
+                options.get_or("l3",     std::array<int,3>{1,1,1}),
+                options.get<std::array<int,3>>("core"),
+                threads);
+        else if (options.has("l3"))
+            decomp_ptr = std::make_unique<ghex::bench::decomposition>(
+                options.get_or("node",   std::array<int,3>{1,1,1}),
+                options.get_or("socket", std::array<int,3>{1,1,1}),
+                options.get_or("numa",   std::array<int,3>{1,1,1}),
+                options.get<std::array<int,3>>("l3"),
+                threads);
+        else if (options.has("numa"))
+            decomp_ptr = std::make_unique<ghex::bench::decomposition>(
+                options.get_or("node",   std::array<int,3>{1,1,1}),
+                options.get_or("socket", std::array<int,3>{1,1,1}),
+                options.get<std::array<int,3>>("numa"),
+                threads);
+        else if (options.has("socket"))
+            decomp_ptr = std::make_unique<ghex::bench::decomposition>(
+                options.get_or("node",   std::array<int,3>{1,1,1}),
+                options.get<std::array<int,3>>("socket"),
+                threads);
+        else 
+            decomp_ptr = std::make_unique<ghex::bench::decomposition>(
+                options.get_or("node",   std::array<int,3>{1,1,1}),
+                threads);
 
-    {
-        decomposition decomp(
-            node_decomposition,
-            socket_decomposition,
-            numa_decomposition,
-            L3_decomposition,
-            rank_decomposition,
-            thread_decomposition);
-
-        simulation sim(num_repetitions, domain_size, halo, num_fields, decomp);
+        simulation sim(
+            options.get<int>("nrep"), 
+            options.get<int>("domain"),
+            options.get<int>("halo"),
+            options.get<int>("nfields"),
+            *decomp_ptr
+        );
 
         sim.exchange();
     
@@ -373,6 +354,5 @@ int main(int argc, char** argv)
     }
 
     MPI_Finalize();
-
     return 0;
 }
