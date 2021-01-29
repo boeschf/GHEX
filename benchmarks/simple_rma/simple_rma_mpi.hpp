@@ -46,7 +46,6 @@ struct simulation : public simulation_base<simulation>
     mpi_dtype_unique_ptr z_recv_l, z_recv_r;
     mpi_dtype_unique_ptr z_send_l, z_send_r;
     std::vector<neighborhood> neighbors;
-    int num_domains;
 
     simulation(
         int num_reps_,
@@ -56,7 +55,6 @@ struct simulation : public simulation_base<simulation>
         ghex::bench::decomposition& decomp)
     : simulation_base(num_reps_, ext_, halo, num_fields_, decomp)
     , comm{decomp.mpi_comm()}
-    , num_domains{decomp.num_domains()}
     {
         for (int i=0; i<num_threads; ++i)
         {
@@ -68,7 +66,7 @@ struct simulation : public simulation_base<simulation>
                 decomp.neighbor(i, 0, 1, 0),
                 decomp.neighbor(i, 0, 0,-1),
                 decomp.neighbor(i, 0, 0, 1)});
-            const auto& n = neighbors.back();
+            //const auto& n = neighbors.back();
             //std::cout << "thread " << i << "\n"
             //    << "  " << n.d.id << " : " << n.d.rank << " : " << n.d.thread 
             //        << " - " << n.d.coord[0] << " " << n.d.coord[1] << " " << n.d.coord[2] << "\n"
@@ -177,7 +175,7 @@ struct simulation : public simulation_base<simulation>
         }
     }
 
-    void init(int j)
+    void init(int) 
     {
     }
 
@@ -186,30 +184,30 @@ struct simulation : public simulation_base<simulation>
         for (int i=0; i<num_fields; ++i)
         {
             GHEX_CHECK_MPI_RESULT(MPI_Sendrecv(
-                raw_fields[j][i].data(), 1, *x_send_l, neighbors[j].x_l.rank, neighbors[j].d.id,
-                raw_fields[j][i].data(), 1, *x_recv_r, neighbors[j].x_r.rank, neighbors[j].x_r.id,
+                raw_fields[j][i].data(), 1, *x_send_l, neighbors[j].x_l.rank, i + num_fields*0 + num_fields*6*neighbors[j].d.thread,
+                raw_fields[j][i].data(), 1, *x_recv_r, neighbors[j].x_r.rank, i + num_fields*0 + num_fields*6*neighbors[j].x_r.thread,
                 comm, MPI_STATUS_IGNORE));
             GHEX_CHECK_MPI_RESULT(MPI_Sendrecv(
-                raw_fields[j][i].data(), 1, *x_send_r, neighbors[j].x_r.rank, neighbors[j].d.id,
-                raw_fields[j][i].data(), 1, *x_recv_l, neighbors[j].x_l.rank, neighbors[j].x_l.id,
-                comm, MPI_STATUS_IGNORE));
-
-            GHEX_CHECK_MPI_RESULT(MPI_Sendrecv(
-                raw_fields[j][i].data(), 1, *y_send_l, neighbors[j].y_l.rank, neighbors[j].d.id + num_domains,
-                raw_fields[j][i].data(), 1, *y_recv_r, neighbors[j].y_r.rank, neighbors[j].y_r.id + num_domains,
-                comm, MPI_STATUS_IGNORE));
-            GHEX_CHECK_MPI_RESULT(MPI_Sendrecv(
-                raw_fields[j][i].data(), 1, *y_send_r, neighbors[j].y_r.rank, neighbors[j].d.id + num_domains,
-                raw_fields[j][i].data(), 1, *y_recv_l, neighbors[j].y_l.rank, neighbors[j].y_l.id + num_domains,
+                raw_fields[j][i].data(), 1, *x_send_r, neighbors[j].x_r.rank, i + num_fields*1 + num_fields*6*neighbors[j].d.thread,
+                raw_fields[j][i].data(), 1, *x_recv_l, neighbors[j].x_l.rank, i + num_fields*1 + num_fields*6*neighbors[j].x_l.thread,
                 comm, MPI_STATUS_IGNORE));
 
             GHEX_CHECK_MPI_RESULT(MPI_Sendrecv(
-                raw_fields[j][i].data(), 1, *z_send_l, neighbors[j].z_l.rank, neighbors[j].d.id + 2*num_domains,
-                raw_fields[j][i].data(), 1, *z_recv_r, neighbors[j].z_r.rank, neighbors[j].z_r.id + 2*num_domains,
+                raw_fields[j][i].data(), 1, *y_send_l, neighbors[j].y_l.rank, i + num_fields*2 + num_fields*6*neighbors[j].d.thread,
+                raw_fields[j][i].data(), 1, *y_recv_r, neighbors[j].y_r.rank, i + num_fields*2 + num_fields*6*neighbors[j].y_r.thread,
                 comm, MPI_STATUS_IGNORE));
             GHEX_CHECK_MPI_RESULT(MPI_Sendrecv(
-                raw_fields[j][i].data(), 1, *z_send_r, neighbors[j].z_r.rank, neighbors[j].d.id + 2*num_domains,
-                raw_fields[j][i].data(), 1, *z_recv_l, neighbors[j].z_l.rank, neighbors[j].z_l.id + 2*num_domains,
+                raw_fields[j][i].data(), 1, *y_send_r, neighbors[j].y_r.rank, i + num_fields*3 + num_fields*6*neighbors[j].d.thread,
+                raw_fields[j][i].data(), 1, *y_recv_l, neighbors[j].y_l.rank, i + num_fields*3 + num_fields*6*neighbors[j].y_l.thread,
+                comm, MPI_STATUS_IGNORE));
+
+            GHEX_CHECK_MPI_RESULT(MPI_Sendrecv(
+                raw_fields[j][i].data(), 1, *z_send_l, neighbors[j].z_l.rank, i + num_fields*4 + num_fields*6*neighbors[j].d.thread,
+                raw_fields[j][i].data(), 1, *z_recv_r, neighbors[j].z_r.rank, i + num_fields*4 + num_fields*6*neighbors[j].z_r.thread,
+                comm, MPI_STATUS_IGNORE));
+            GHEX_CHECK_MPI_RESULT(MPI_Sendrecv(
+                raw_fields[j][i].data(), 1, *z_send_r, neighbors[j].z_r.rank, i + num_fields*5 + num_fields*6*neighbors[j].d.thread,
+                raw_fields[j][i].data(), 1, *z_recv_l, neighbors[j].z_l.rank, i + num_fields*5 + num_fields*6*neighbors[j].z_l.thread,
                 comm, MPI_STATUS_IGNORE));
         }
     }
