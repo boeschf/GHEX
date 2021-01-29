@@ -55,6 +55,9 @@ struct memory
     T* host_data() const { return m_host_memory.get(); }
 #ifdef __CUDACC__
     T* device_data() const { return m_device_memory.get(); }
+    T* hd_data() const { return m_device_memory.get(); }
+#else
+    T* hd_data() const { return m_host_memory.get(); }
 #endif
 
     unsigned int size() const { return m_size; }
