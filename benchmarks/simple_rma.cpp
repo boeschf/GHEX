@@ -114,11 +114,11 @@ int main(int argc, char** argv)
 
         if (options.is_set("print"))
         {
-            if (rank == 0)
-                decomp_ptr->print();
-            MPI_Barrier(MPI_COMM_WORLD);
+            MPI_Barrier(decomp_ptr->mpi_comm());
+            decomp_ptr->print();
+            MPI_Barrier(decomp_ptr->mpi_comm());
             decomp_ptr.release();
-            MPI_Barrier(MPI_COMM_WORLD);
+            MPI_Barrier(decomp_ptr->mpi_comm());
             MPI_Finalize();
             return 0;
         }

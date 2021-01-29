@@ -312,7 +312,7 @@ public:
 
     void print()
     {
-        hwcart_print_rank_topology(m_hw_topo.m, MPI_COMM_WORLD, m_levels.size(), m_levels.data(), m_topo.data(), m_order);
+        hwcart_print_rank_topology(m_hw_topo.m, m_comm, m_levels.size(), m_levels.data(), m_topo.data(), m_order);
     }
 };
 
