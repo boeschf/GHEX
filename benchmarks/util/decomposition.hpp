@@ -117,8 +117,10 @@ public:
         order,
         thread_d,
         std::vector<int>{
+                      1,             1,             1,
               node_d[0],     node_d[1],     node_d[2]},
         std::vector<hwcart_split_t>{
+            HWCART_MD_CORE,
             HWCART_MD_NODE})
     { }
 
@@ -131,9 +133,11 @@ public:
         order,
         thread_d,
         std::vector<int>{
+                      1,             1,             1,
             socket_d[0],   socket_d[1],   socket_d[2],
               node_d[0],     node_d[1],     node_d[2]},
         std::vector<hwcart_split_t>{
+            HWCART_MD_CORE,
             HWCART_MD_SOCKET,
             HWCART_MD_NODE})
     { }
@@ -148,10 +152,12 @@ public:
         order,
         thread_d,
         std::vector<int>{
+                      1,             1,             1,
               numa_d[0],     numa_d[1],     numa_d[2], 
             socket_d[0],   socket_d[1],   socket_d[2],
               node_d[0],     node_d[1],     node_d[2]},
         std::vector<hwcart_split_t>{
+            HWCART_MD_CORE,
             HWCART_MD_NUMA,
             HWCART_MD_SOCKET,
             HWCART_MD_NODE})
@@ -168,11 +174,13 @@ public:
         order,
         thread_d,
         std::vector<int>{
+                      1,             1,             1,
                 l3_d[0],       l3_d[1],       l3_d[2], 
               numa_d[0],     numa_d[1],     numa_d[2], 
             socket_d[0],   socket_d[1],   socket_d[2],
               node_d[0],     node_d[1],     node_d[2]},
         std::vector<hwcart_split_t>{
+            HWCART_MD_CORE,
             HWCART_MD_L3CACHE,
             HWCART_MD_NUMA,
             HWCART_MD_SOCKET,
