@@ -29,6 +29,14 @@ class decomposition
 public:
     using arr = std::array<int,3>;
 
+    struct domain_t
+    {
+        int id;
+        int rank;
+        int thread;
+        arr coord;
+    };
+
 private:
     struct hw_topo_t {
         hwcart_topo_t m;
@@ -98,18 +106,6 @@ private:
         m_coord[0] *= m_thread_decomposition[0];
         m_coord[1] *= m_thread_decomposition[1];
         m_coord[2] *= m_thread_decomposition[2];
-        //if (m_rank == 0)
-        //{
-        //    for (unsigned int j=0; j<m_levels.size(); ++j)
-        //    {
-        //        for (int i=0; i<3; ++i)
-        //        {
-        //            std::cout << m_topo[j*3+i] << " ";
-        //        }
-        //        std::cout << std::endl;
-        //    }
-        //}
-        //std::cout << m_coord[0] << " " << m_coord[1] << " " << m_coord[2] << std::endl;
     }
 
 public:
@@ -244,7 +240,7 @@ public:
         hwcart_free(&m_hw_topo.m, &m_comm);
     }
 
-    arr coord(int thread_id)
+    arr coord(int thread_id) const noexcept
     {
         arr res(m_coord);
         res[0] += thread_id%m_thread_decomposition[0];
@@ -260,10 +256,59 @@ public:
     int rank() const noexcept { return m_rank; }
 
     int size() const noexcept { return m_size; }
+
+    domain_t domain(int thread_id) const noexcept
+    {
+        const auto c = coord(thread_id);
+        return {
+            c[0]+m_global_decomposition[0]*m_thread_decomposition[0]*(c[1] + m_global_decomposition[1]*m_thread_decomposition[1]*c[2]),
+            m_rank,
+            thread_id,
+            c};
+    }
+
+    domain_t neighbor(int thread_id, int dx, int dy, int dz) const noexcept
+    {
+        auto c = coord(thread_id);
+        c[0] += dx;
+        c[1] += dy;
+        c[2] += dz;
+
+        for (int i=0; i<3; ++i)
+        {
+            if (c[i] > m_last_coord[i]) c[i] -= m_last_coord[i]+1;
+            if (c[i] < 0) c[i] += m_last_coord[i]+1;
+        }
+        const int id = c[0]+m_global_decomposition[0]*m_thread_decomposition[0]*(c[1] + m_global_decomposition[1]*m_thread_decomposition[1]*c[2]);
+
+        arr ct = c;
+        arr c0;
+        for (int i=0; i<3; ++i)
+        {
+            c0[i] = c[i]/m_thread_decomposition[i];
+            ct[i] = c[i]-c0[i]*m_thread_decomposition[i];
+        }
+        const int t_id = ct[0] + m_thread_decomposition[0]*(ct[1] + m_thread_decomposition[1]*ct[2]);
+
+        if (c0[0] == m_coord[0] && c0[1] == m_coord[1] && c0[2] == m_coord[2])
+        {
+            return {id, m_rank, t_id, c};
+        }
+        else
+        {
+            int n_rank;
+            int periodic[3] = {1,1,1};
+            int dims[3] = {m_global_decomposition[0], m_global_decomposition[1], m_global_decomposition[2]};
+            hwcart_coord2rank(m_comm, dims, periodic, c0.data(), m_order, &n_rank);
+            return {id, n_rank, t_id, c};
+        }
+    }
     
     const arr& last_coord() const noexcept { return m_last_coord; }
 
     int threads_per_rank() const noexcept { return m_threads_per_rank; }
+
+    int num_domains() const noexcept { return threads_per_rank()*size(); }
 
     void print()
     {
