@@ -122,7 +122,10 @@ struct simulation : public simulation_base<simulation>
         > (comms[j]);
 #ifndef __CUDACC__
         for (int i=0; i<num_fields; ++i)
+        {
+            std::cout << "adding field" << std::endl;
             bco.add_field(pattern->operator()(fields[j][i]));
+        }
 #else
         for (int i=0; i<num_fields; ++i)
             bco.add_field(pattern->operator()(fields_gpu[j][i]));

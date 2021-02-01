@@ -91,6 +91,27 @@ struct simulation_base
             raw_fields[j].emplace_back(max_memory, 0);
         static_cast<Derived*>(this)->init(j);
 
+        for (int i=0; i<num_fields; ++i)
+        {
+            ghex::bench::view<T,3> v(&raw_fields[j][i], {
+                (unsigned int)local_ext_buffer[0],
+                (unsigned int)local_ext_buffer[1],
+                (unsigned int)local_ext_buffer[2]});
+            v({1,1,1}) = i+1;
+            v.print();
+            std::cout << std::endl;
+        }
+        static_cast<Derived*>(this)->step(j);
+        for (int i=0; i<num_fields; ++i)
+        {
+            ghex::bench::view<T,3> v(&raw_fields[j][i], {
+                (unsigned int)local_ext_buffer[0],
+                (unsigned int)local_ext_buffer[1],
+                (unsigned int)local_ext_buffer[2]});
+            v.print();
+            std::cout << std::endl;
+        }
+
         // warm up
         for (int t = 0; t < 50; ++t)
         {
