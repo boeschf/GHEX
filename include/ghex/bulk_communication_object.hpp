@@ -436,11 +436,11 @@ public:
     }
 
     // is co initialized
-    bool initialized()
+    bool initialized() const noexcept
     {
         return m_initialized;
     }
-    
+
     // add multiple fields at once
     template<typename... F>
     void add_fields(buffer_info_type<F>... bis)
@@ -584,22 +584,22 @@ public:
 private:
     void wait()
     {
-        await_requests(m_wait_funcs);
-        //// loop over Fields
-        //for (std::size_t i=0; i<boost::mp11::mp_size<field_types>::value; ++i)
-        //{
-        //    boost::mp11::mp_with_index<boost::mp11::mp_size<field_types>::value>(i,
-        //    [this](auto i) {
-        //        // get the field Index 
-        //        using I = decltype(i);
-        //        // get target ranges for fields and give remotes access
-        //        auto& t_range = std::get<I::value>(m_target_ranges_tuple);
-        //        for (auto& t_vec : t_range.m_ranges)
-        //            for (auto& r : t_vec)
-        //                r.start_target_epoch();
-        //    });
-        //}
-
+        // wait for all local ranges to be filled
+        //await_requests(m_wait_funcs);
+        // loop over Fields
+        for (std::size_t i=0; i<boost::mp11::mp_size<field_types>::value; ++i)
+        {
+            boost::mp11::mp_with_index<boost::mp11::mp_size<field_types>::value>(i,
+            [this](auto i) {
+                // get the field Index 
+                using I = decltype(i);
+                // get target ranges for fields and give remotes access
+                auto& t_range = std::get<I::value>(m_target_ranges_tuple);
+                for (auto& t_vec : t_range.m_ranges)
+                    for (auto& r : t_vec)
+                        r.start_target_epoch();
+            });
+        }
     }
 };
 

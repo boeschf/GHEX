@@ -112,6 +112,11 @@ public:
         assert(m_strides[Dim-1] == m->size());
     }
 
+    template<typename... D>
+    view(memory_type* mem, D... dims)
+    : view(mem, array_type{(unsigned int)dims...})
+    {}
+
     const T& operator()(array_type const & coord) const noexcept
     {
         unsigned int i = coord[0];
@@ -119,6 +124,9 @@ public:
             i += coord[d]*m_strides[d-1];
         return m->operator[](i);
     }
+
+    template<typename... I>
+    const T& operator()(I... i) const noexcept { return this->operator()(array_type{(unsigned int)i...}); }
 
     T& operator()(array_type const & coord) noexcept
     {
@@ -128,6 +136,9 @@ public:
         return m->operator[](i);
     }
 
+    template<typename... I>
+    T& operator()(I... i) noexcept { return this->operator()(array_type{(unsigned int)i...}); }
+
     const memory_type& get() const noexcept { return *m; }
 
     memory_type& get() noexcept { return *m; }
@@ -136,6 +147,7 @@ public:
     {
         print(Dim-1, array_type{});
     }
+
 private:
     void print(unsigned int d, array_type coord) const
     {
@@ -169,4 +181,3 @@ private:
 
 } // namespace bench
 } // namespace ghex
-

@@ -99,13 +99,13 @@ struct simulation : public simulation_base<simulation>
         {
             fields[j].push_back(gridtools::ghex::wrap_field<gridtools::ghex::cpu,2,1,0>(
                 local_domains[j],
-                raw_fields[j].back().host_data(),
+                raw_fields[j][i].host_data(),
                 offset,
                 local_ext_buffer));
 #ifdef __CUDACC__
             fields_gpu[j].push_back(gridtools::ghex::wrap_field<gridtools::ghex::gpu,2,1,0>(
                 local_domains[j],
-                raw_fields[j].back().device_data(),
+                raw_fields[j][i].device_data(),
                 offset,
                 local_ext_buffer));
 #endif
@@ -122,10 +122,7 @@ struct simulation : public simulation_base<simulation>
         > (comms[j]);
 #ifndef __CUDACC__
         for (int i=0; i<num_fields; ++i)
-        {
-            std::cout << "adding field" << std::endl;
             bco.add_field(pattern->operator()(fields[j][i]));
-        }
 #else
         for (int i=0; i<num_fields; ++i)
             bco.add_field(pattern->operator()(fields_gpu[j][i]));

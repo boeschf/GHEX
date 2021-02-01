@@ -32,7 +32,9 @@ struct simulation_base
 {
     using T = GHEX_FLOAT_TYPE;
     using raw_field_type = ghex::bench::memory<T>;
+    using decomp_type = ghex::bench::decomposition;
 
+    decomp_type& decomp;
     int rank;
     int size;
     int num_reps;
@@ -57,8 +59,9 @@ struct simulation_base
         int ext_,
         int halo,
         int num_fields_,
-        ghex::bench::decomposition& decomp)
-    : rank(decomp.rank())
+        ghex::bench::decomposition& decomp_)
+    : decomp(decomp_)
+    , rank(decomp.rank())
     , size(decomp.size())
     , num_reps{num_reps_}
     , num_threads(decomp.threads_per_rank())
@@ -87,36 +90,18 @@ struct simulation_base
     void exchange(int j)
     {
         //std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        for (int i=0; i<num_fields; ++i)
-            raw_fields[j].emplace_back(max_memory, 0);
+        make_fields(j);
+
         static_cast<Derived*>(this)->init(j);
 
-        for (int i=0; i<num_fields; ++i)
-        {
-            ghex::bench::view<T,3> v(&raw_fields[j][i], {
-                (unsigned int)local_ext_buffer[0],
-                (unsigned int)local_ext_buffer[1],
-                (unsigned int)local_ext_buffer[2]});
-            v({1,1,1}) = i+1;
-            v.print();
-            std::cout << std::endl;
-        }
-        static_cast<Derived*>(this)->step(j);
-        for (int i=0; i<num_fields; ++i)
-        {
-            ghex::bench::view<T,3> v(&raw_fields[j][i], {
-                (unsigned int)local_ext_buffer[0],
-                (unsigned int)local_ext_buffer[1],
-                (unsigned int)local_ext_buffer[2]});
-            v.print();
-            std::cout << std::endl;
-        }
+        //print_fields(j);
+        //static_cast<Derived*>(this)->step(j);
+        //check(j);
+        //print_fields(j);
 
         // warm up
         for (int t = 0; t < 50; ++t)
-        {
             static_cast<Derived*>(this)->step(j);
-        }
 
         auto start = clock_type::now();
         for (int t = 0; t < num_reps; ++t)
@@ -148,6 +133,41 @@ struct simulation_base
             std::cout << "GB/s min:     " << std::setprecision(12) << load / (tt.max()*1000.0) << std::endl;
             std::cout << "GB/s max:     " << std::setprecision(12) << load / (tt.min()*1000.0) << std::endl;
             std::cout << "GB/s sdev:    " << std::setprecision(12) << (tt.stddev()/tt.mean())* (load / (tt.mean()*1000.0)) << std::endl;
+        }
+    }
+
+private:
+    void make_fields(int j)
+    {
+        for (int i=0; i<num_fields; ++i)
+        {
+            raw_fields[j].emplace_back(max_memory, 0);
+            ghex::bench::view<T,3> v(&raw_fields[j].back(),
+                local_ext_buffer[0], local_ext_buffer[1], local_ext_buffer[2]);
+            unsigned int c = decomp.domain(j).id + i+1;
+            for (int z=0; z<ext; ++z)
+            for (int y=0; y<ext; ++y)
+            for (int x=0; x<ext; ++x)
+            {
+                v(x+halos[0], y+halos[2], z+halos[4]) = c;
+                ++c;
+            }
+        }
+    }
+
+    void check(int j)
+    {
+        // TODO: check here
+    }
+
+    void print_fields(int j)
+    {
+        for (int i=0; i<num_fields; ++i)
+        {
+            ghex::bench::view<T,3> v(&raw_fields[j][i], 
+                local_ext_buffer[0], local_ext_buffer[1], local_ext_buffer[2]);
+            v.print();
+            std::cout << std::endl;
         }
     }
 };
