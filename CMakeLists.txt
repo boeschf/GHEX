@@ -172,6 +172,7 @@ if (GHEX_BUILD_TESTS OR GHEX_BUILD_BENCHMARKS)
     endif()
 
     if (GHEX_BUILD_BENCHMARKS)
+        find_package(HWLOC)
         find_package(HWCART)
 
         add_library(gtest_main_bench ./utils/gtest_main_bench.cpp)
@@ -194,7 +195,7 @@ if (GHEX_BUILD_TESTS OR GHEX_BUILD_BENCHMARKS)
 endif()
 
 if (GHEX_BUILD_FORTRAN)
-    add_subdirectory(bindings)
+    #    add_subdirectory(bindings)
 endif()
 
 include(GNUInstallDirs)
