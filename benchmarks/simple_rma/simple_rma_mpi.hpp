@@ -52,8 +52,9 @@ struct simulation : public simulation_base<simulation>
         int ext_,
         int halo,
         int num_fields_,
+        bool check_,
         ghex::bench::decomposition& decomp)
-    : simulation_base(num_reps_, ext_, halo, num_fields_, decomp)
+    : simulation_base(num_reps_, ext_, halo, num_fields_, check_, decomp)
     , comm{decomp.mpi_comm()}
     {
         for (int i=0; i<num_threads; ++i)

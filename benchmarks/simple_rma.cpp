@@ -32,6 +32,7 @@ int main(int argc, char** argv)
         ("hwthread", "hardware-thread grid",  "NX NY NZ", 3)
         ("thread",   "software-thread grid",  "NX NY NZ", {1,1,1})
         ("print",    "print decomposition")
+        ("check",    "check results")
         .parse(argc, argv);
 
     const auto threads = options.get<std::array<int,3>>("thread");
@@ -128,6 +129,7 @@ int main(int argc, char** argv)
             options.get<int>("domain"),
             options.get<int>("halo"),
             options.get<int>("nfields"),
+            options.is_set("check"),
             *decomp_ptr
         );
 

@@ -341,7 +341,7 @@ PROGRAM test_halo_exchange
      ! warmup
      ! exchange halos
      it = 0
-     do while (it < 10)
+     do while (it < 50)
         eh = ghex_exchange(co, ed)
         call ghex_wait(eh)
         call ghex_free(eh)

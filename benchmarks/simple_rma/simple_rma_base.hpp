@@ -19,7 +19,6 @@
 #include <array>
 #include <memory>
 #include <vector>
-//#include <pthread.h>
 
 #include "../util/decomposition.hpp"
 #include "../util/memory.hpp"
@@ -41,6 +40,7 @@ struct simulation_base
     int num_threads;
     bool mt;
     const int num_fields;
+    bool check_res;
     int ext;
     const std::array<int,3> local_ext;
     const std::array<bool,3> periodic;
@@ -59,6 +59,7 @@ struct simulation_base
         int ext_,
         int halo,
         int num_fields_,
+        bool check_,
         ghex::bench::decomposition& decomp_)
     : decomp(decomp_)
     , rank(decomp.rank())
@@ -67,6 +68,7 @@ struct simulation_base
     , num_threads(decomp.threads_per_rank())
     , mt(num_threads > 1)
     , num_fields{num_fields_}
+    , check_res(check_)
     , ext{ext_}
     , local_ext{ext,ext,ext}
     , periodic{true,true,true}
@@ -94,26 +96,26 @@ struct simulation_base
 
         static_cast<Derived*>(this)->init(j);
 
-#ifndef NDEBUG
-        //print_fields(j);
-        static_cast<Derived*>(this)->step(j);
-        print_fields(j);
-        check(j);
-#endif
+        if (check_res)
+        {
+            static_cast<Derived*>(this)->step(j);
+            //print_fields(j);
+            check(j);
+        }
 
         // warm up
         for (int t = 0; t < 50; ++t)
             static_cast<Derived*>(this)->step(j);
 
-        auto start = clock_type::now();
+        const auto start = clock_type::now();
         for (int t = 0; t < num_reps; ++t)
         {
-            timer_vec[j].tic();
+            //timer_vec[j].tic();
             static_cast<Derived*>(this)->step(j);
-            timer_vec[j].toc();
+            //timer_vec[j].toc();
         }
-        auto end = clock_type::now();
-        std::chrono::duration<double> elapsed_seconds = end - start;
+        const auto end = clock_type::now();
+        const std::chrono::duration<double> elapsed_seconds = end - start;
 
         if (rank == 0 && j == 0)
         {
@@ -125,16 +127,16 @@ struct simulation_base
             const auto   GB_per_s = num_reps * load / (elapsed_seconds.count() * 1.0e9);
             std::cout << "elapsed time: " << elapsed_seconds.count() << "s\n";
             std::cout << "GB/s : " << GB_per_s << std::endl;
-            const auto tt = timer_vec[0];
-            std::cout << "mean time:    " << std::setprecision(12) << tt.mean()/1000000.0 << "\n";
-            std::cout << "min time:     " << std::setprecision(12) << tt.min()/1000000.0 << "\n";
-            std::cout << "max time:     " << std::setprecision(12) << tt.max()/1000000.0 << "\n";
-            std::cout << "sdev time:    " << std::setprecision(12) << tt.stddev()/1000000.0 << "\n";
-            std::cout << "sdev f time:  " << std::setprecision(12) << tt.stddev()/tt.mean() << "\n";
-            std::cout << "GB/s mean:    " << std::setprecision(12) << load / (tt.mean()*1000.0) << std::endl;
-            std::cout << "GB/s min:     " << std::setprecision(12) << load / (tt.max()*1000.0) << std::endl;
-            std::cout << "GB/s max:     " << std::setprecision(12) << load / (tt.min()*1000.0) << std::endl;
-            std::cout << "GB/s sdev:    " << std::setprecision(12) << (tt.stddev()/tt.mean())* (load / (tt.mean()*1000.0)) << std::endl;
+            //const auto tt = timer_vec[0];
+            //std::cout << "mean time:    " << std::setprecision(12) << tt.mean()/1000000.0 << "\n";
+            //std::cout << "min time:     " << std::setprecision(12) << tt.min()/1000000.0 << "\n";
+            //std::cout << "max time:     " << std::setprecision(12) << tt.max()/1000000.0 << "\n";
+            //std::cout << "sdev time:    " << std::setprecision(12) << tt.stddev()/1000000.0 << "\n";
+            //std::cout << "sdev f time:  " << std::setprecision(12) << tt.stddev()/tt.mean() << "\n";
+            //std::cout << "GB/s mean:    " << std::setprecision(12) << load / (tt.mean()*1000.0) << std::endl;
+            //std::cout << "GB/s min:     " << std::setprecision(12) << load / (tt.max()*1000.0) << std::endl;
+            //std::cout << "GB/s max:     " << std::setprecision(12) << load / (tt.min()*1000.0) << std::endl;
+            //std::cout << "GB/s sdev:    " << std::setprecision(12) << (tt.stddev()/tt.mean())* (load / (tt.mean()*1000.0)) << std::endl;
         }
     }
 
@@ -157,7 +159,7 @@ private:
         }
     }
 
-    void check(int jj)
+    bool check(int jj)
     {
         for (int zn=-1; zn<2; ++zn)
         for (int yn=-1; yn<2; ++yn)
@@ -195,11 +197,15 @@ private:
                     const unsigned int expected = offset + ii + 1 + 
                         xn + yn*local_ext[0] + zn*local_ext[0]*local_ext[1];
                     if (v(x,y,z) != (T)expected)
+                    {
                         std::cout << "check failed!!!!!!!!!!!!!!!!! expected " << (T)expected 
                             << " but found " << v(x,y,z) << std::endl;
+                        return false;
+                    }
                 }
             }
         }
+        return true;
     }
 
     void print_fields(int j)

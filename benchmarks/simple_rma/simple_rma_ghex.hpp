@@ -62,8 +62,9 @@ struct simulation : public simulation_base<simulation>
         int ext_,
         int halo,
         int num_fields_,
+        bool check_,
         ghex::bench::decomposition& decomp)
-    : simulation_base(num_reps_, ext_, halo, num_fields_, decomp)
+    : simulation_base(num_reps_, ext_, halo, num_fields_, check_, decomp)
     , context_ptr{gridtools::ghex::tl::context_factory<transport>::create(decomp.mpi_comm())}
     , context{*context_ptr}
     , halo_gen(g_first, g_last, halos, periodic)
