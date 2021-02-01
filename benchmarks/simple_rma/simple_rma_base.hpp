@@ -94,10 +94,12 @@ struct simulation_base
 
         static_cast<Derived*>(this)->init(j);
 
+#ifndef NDEBUG
         //print_fields(j);
-        //static_cast<Derived*>(this)->step(j);
-        //check(j);
-        //print_fields(j);
+        static_cast<Derived*>(this)->step(j);
+        print_fields(j);
+        check(j);
+#endif
 
         // warm up
         for (int t = 0; t < 50; ++t)
@@ -155,19 +157,70 @@ private:
         }
     }
 
-    void check(int j)
+    void check(int jj)
     {
-        // TODO: check here
+        for (int zn=-1; zn<2; ++zn)
+        for (int yn=-1; yn<2; ++yn)
+        for (int xn=-1; xn<2; ++xn)
+        {
+            int offset = decomp.neighbor(jj, xn, yn, zn).id;
+
+            const int ext_z    = zn<0 ? halos[4]     : zn==0 ? local_ext[2] : halos[5];
+            const int first_z  = zn<0 ?       0      : zn==0 ? halos[4]     : halos[4]+local_ext[2];
+            const int first_zn = zn<0 ? local_ext[2] : zn==0 ? halos[4]     : halos[4];
+
+            const int ext_y    = yn<0 ? halos[2]     : yn==0 ? local_ext[1] : halos[3];
+            const int first_y  = yn<0 ?       0      : yn==0 ? halos[2]     : halos[2]+local_ext[1];
+            const int first_yn = yn<0 ? local_ext[1] : yn==0 ? halos[2]     : halos[2];
+
+            const int ext_x    = xn<0 ? halos[0]     : xn==0 ? local_ext[0] : halos[1];
+            const int first_x  = xn<0 ?       0      : xn==0 ? halos[0]     : halos[0]+local_ext[0];
+            const int first_xn = xn<0 ? local_ext[0] : xn==0 ? halos[0]     : halos[0];
+
+            for (int ii=0; ii<num_fields; ++ii)
+            {
+                ghex::bench::view<T,3> v(&raw_fields[jj][ii],
+                    local_ext_buffer[0], local_ext_buffer[1], local_ext_buffer[2]);
+                for (int k=0; k<ext_z; ++k)
+                for (int j=0; j<ext_y; ++j)
+                for (int i=0; i<ext_x; ++i)
+                {
+                    const auto x  = first_x  + i;
+                    const auto xn = first_xn + i - halos[0];
+                    const auto y  = first_y  + j;
+                    const auto yn = first_yn + j - halos[2];
+                    const auto z  = first_z  + k;
+                    const auto zn = first_zn + k - halos[4];
+
+                    const unsigned int expected = offset + ii + 1 + 
+                        xn + yn*local_ext[0] + zn*local_ext[0]*local_ext[1];
+                    if (v(x,y,z) != (T)expected)
+                        std::cout << "check failed!!!!!!!!!!!!!!!!! expected " << (T)expected 
+                            << " but found " << v(x,y,z) << std::endl;
+                }
+            }
+        }
     }
 
     void print_fields(int j)
     {
-        for (int i=0; i<num_fields; ++i)
+        MPI_Barrier(decomp.mpi_comm());
+        for (int r=0; r<size; ++r)
         {
-            ghex::bench::view<T,3> v(&raw_fields[j][i], 
-                local_ext_buffer[0], local_ext_buffer[1], local_ext_buffer[2]);
-            v.print();
-            std::cout << std::endl;
+            if (r==rank)
+            {
+                std::lock_guard<std::mutex> lock(io_mutex);
+                std::cout << "rank " << rank << ", thread " << j << std::endl;
+                for (int i=0; i<num_fields; ++i)
+                {
+                    std::cout << "  field " << i << std::endl;
+                    ghex::bench::view<T,3> v(&raw_fields[j][i], 
+                        local_ext_buffer[0], local_ext_buffer[1], local_ext_buffer[2]);
+                    v.print();
+                    std::cout << std::endl;
+                }
+            }
+            MPI_Barrier(decomp.mpi_comm());
         }
     }
 };
