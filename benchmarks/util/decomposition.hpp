@@ -20,6 +20,7 @@
 extern "C" {
 #include <hwcart.h>
 }
+#include <ghex/transport_layer/mpi/error.hpp>
 
 namespace ghex {
 namespace bench {
@@ -46,6 +47,7 @@ private:
                 throw std::runtime_error("hwcart init failed");
         }
     };
+    bool m_mpi_cart = false;
     hw_topo_t m_hw_topo;
     hwcart_order_t m_order = HWCartOrderYZX;
     arr m_thread_decomposition;
@@ -86,6 +88,7 @@ private:
     , m_thread_decomposition(thread_d)
     , m_topo{topo}
     , m_levels{levels}
+    , m_threads_per_rank{thread_d[0]*thread_d[1]*thread_d[2]}
     {
         if (hwcart_create(m_hw_topo.m, MPI_COMM_WORLD, m_levels.size(), m_levels.data(), m_topo.data(), m_order, &m_comm))
                 throw std::runtime_error("hwcart create failed");
@@ -96,12 +99,8 @@ private:
                 m_global_decomposition[i] *= m_topo[j*3+i];
             m_last_coord[i] = m_global_decomposition[i]*m_thread_decomposition[i]-1;
         }
-        m_threads_per_rank =
-            m_thread_decomposition[0]*
-            m_thread_decomposition[1]*
-            m_thread_decomposition[2];
-        MPI_Comm_rank(m_comm, &m_rank);
-        MPI_Comm_size(m_comm, &m_size);
+        GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(m_comm, &m_rank));
+        GHEX_CHECK_MPI_RESULT(MPI_Comm_size(m_comm, &m_size));
         hwcart_rank2coord(m_comm, m_global_decomposition.data(), m_rank, m_order, m_coord.data());
         m_coord[0] *= m_thread_decomposition[0];
         m_coord[1] *= m_thread_decomposition[1];
@@ -109,6 +108,30 @@ private:
     }
 
 public:
+    decomposition(
+        const arr& global_d,
+        const arr& thread_d)
+    : m_mpi_cart{true}
+    , m_hw_topo()
+    , m_order{HWCartOrderXYZ}
+    , m_thread_decomposition(thread_d)
+    , m_topo{global_d[0], global_d[1], global_d[2]}
+    , m_levels{HWCART_MD_NODE}
+    , m_global_decomposition{global_d}
+    , m_threads_per_rank{thread_d[0]*thread_d[1]*thread_d[2]}
+    {
+        const int periods[3] = {1,1,1};
+        GHEX_CHECK_MPI_RESULT(MPI_Cart_create(MPI_COMM_WORLD, 3, global_d.data(), periods, 1, &m_comm));
+        for (int i=0; i<3; ++i)
+            m_last_coord[i] = m_global_decomposition[i]*m_thread_decomposition[i]-1;
+        GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(m_comm, &m_rank));
+        GHEX_CHECK_MPI_RESULT(MPI_Comm_size(m_comm, &m_size));
+        GHEX_CHECK_MPI_RESULT(MPI_Cart_coords(m_comm, m_rank, 3, m_coord.data()));
+        m_coord[0] *= m_thread_decomposition[0];
+        m_coord[1] *= m_thread_decomposition[1];
+        m_coord[2] *= m_thread_decomposition[2];
+    }
+
     decomposition(
         const std::string& order, 
         const arr& node_d,
@@ -307,7 +330,14 @@ public:
             int n_rank;
             int periodic[3] = {1,1,1};
             int dims[3] = {m_global_decomposition[0], m_global_decomposition[1], m_global_decomposition[2]};
-            hwcart_coord2rank(m_comm, dims, periodic, c0.data(), m_order, &n_rank);
+            if (m_mpi_cart)
+            {
+                GHEX_CHECK_MPI_RESULT(MPI_Cart_rank(m_comm, c0.data(), &n_rank));
+            }
+            else
+            {
+                hwcart_coord2rank(m_comm, dims, periodic, c0.data(), m_order, &n_rank);
+            }
             return {id, n_rank, t_id, c};
         }
     }
@@ -320,7 +350,15 @@ public:
 
     void print()
     {
-        hwcart_print_rank_topology(m_hw_topo.m, m_comm, m_levels.size(), m_levels.data(), m_topo.data(), m_order);
+        if (!m_mpi_cart)
+        {
+            hwcart_print_rank_topology(m_hw_topo.m, m_comm, m_levels.size(), m_levels.data(), m_topo.data(), m_order);
+        }
+        else
+        {
+            if (m_rank == 0)
+                std::cout << "cannot print topology for MPI_Cart" << std::endl;
+        }
     }
 };
 

@@ -210,7 +210,7 @@ private:
 
     void print_fields(int j)
     {
-        MPI_Barrier(decomp.mpi_comm());
+        GHEX_CHECK_MPI_RESULT(MPI_Barrier(decomp.mpi_comm()));
         for (int r=0; r<size; ++r)
         {
             if (r==rank)
@@ -226,7 +226,7 @@ private:
                     std::cout << std::endl;
                 }
             }
-            MPI_Barrier(decomp.mpi_comm());
+            GHEX_CHECK_MPI_RESULT(MPI_Barrier(decomp.mpi_comm()));
         }
     }
 };
