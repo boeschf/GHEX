@@ -222,14 +222,20 @@ private: // member types
         rma::local_handle& m_local_handle;
         pattern_type& m_remote_pattern;
         pattern_type& m_local_pattern;
+        pattern_type& m_node_local_pattern;
+        std::unique_ptr<co_type> m_co;
+        bool m_has_local_halos = false;
+        bool m_has_node_local_halos = false;
 
         // construct from field, pattern and the maps storing rma handles, and patterns
         field_container(communicator_type comm, const Field& f, const pattern_type& pattern,
-            local_handle_map& l_handle_map, pattern_map& local_map, pattern_map& remote_map)
+            local_handle_map& l_handle_map, pattern_map& local_map, pattern_map& node_local_map, pattern_map& remote_map)
         : m_field{f}
         , m_local_handle(l_handle_map.insert(std::make_pair((void*)(f.data()),rma::local_handle{})).first->second)
         , m_remote_pattern(remote_map.insert(std::make_pair(&pattern, pattern)).first->second)
         , m_local_pattern(local_map.insert(std::make_pair(&pattern, pattern)).first->second)
+        , m_node_local_pattern(node_local_map.insert(std::make_pair(&pattern, pattern)).first->second)
+        , m_co{std::make_unique<co_type>(comm)}
         {
             // initialize the remote handle - this will effectively publish the rma pointers
             // will do nothing if already initialized
@@ -247,7 +253,8 @@ private: // member types
                 while (r_it != r_p.send_halos().end())
                 {
                     const auto local = rma::is_local(comm, r_it->first.mpi_rank);
-                    if (local != rma::locality::remote) r_it = r_p.send_halos().erase(r_it);
+                    const bool node_local = comm.is_local(r_it->first.mpi_rank);
+                    if (local != rma::locality::remote || node_local) r_it = r_p.send_halos().erase(r_it);
                     else ++r_it;
                 }
 
@@ -261,12 +268,25 @@ private: // member types
                     else l_it = l_p.send_halos().erase(l_it);
                 }
 
+                // remove remote and local fields from node local pattern
+                auto& nl_p = m_node_local_pattern[n];
+                auto nl_it = nl_p.send_halos().begin();
+                while (nl_it != nl_p.send_halos().end())
+                {
+                    const auto local = rma::is_local(comm, nl_it->first.mpi_rank);
+                    const bool node_local = comm.is_local(nl_it->first.mpi_rank);
+                    if (local == rma::locality::remote && node_local) ++nl_it;
+                    else nl_it = nl_p.send_halos().erase(nl_it);
+                }
+
+
                 // remove local fields from remote pattern
                 r_it = r_p.recv_halos().begin();
                 while (r_it != r_p.recv_halos().end())
                 {
                     const auto local = rma::is_local(comm, r_it->first.mpi_rank);
-                    if (local != rma::locality::remote) r_it = r_p.recv_halos().erase(r_it);
+                    const bool node_local = comm.is_local(r_it->first.mpi_rank);
+                    if (local != rma::locality::remote || node_local) r_it = r_p.recv_halos().erase(r_it);
                     else ++r_it;
                 }
 
@@ -278,6 +298,21 @@ private: // member types
                     if (local != rma::locality::remote) ++l_it;
                     else l_it = l_p.recv_halos().erase(l_it);
                 }
+
+                // remove remote and local fields from inode local pattern
+                nl_it = nl_p.recv_halos().begin();
+                while (nl_it != nl_p.recv_halos().end())
+                {
+                    const auto local = rma::is_local(comm, nl_it->first.mpi_rank);
+                    const bool node_local = comm.is_local(nl_it->first.mpi_rank);
+                    if (local == rma::locality::remote && node_local) ++nl_it;
+                    else nl_it = nl_p.recv_halos().erase(nl_it);
+                }
+
+                if (l_p.send_halos().size() > 0u || l_p.recv_halos().size() > 0u)
+                    m_has_local_halos = true;
+                if (nl_p.send_halos().size() > 0u || nl_p.recv_halos().size() > 0u)
+                    m_has_node_local_halos = true;
             }
         }
 
@@ -322,6 +357,7 @@ private: // members
     communicator_type                  m_comm;
     co_ptr                             m_co;
     pattern_map                        m_local_pattern_map;
+    pattern_map                        m_node_local_pattern_map;
     pattern_map                        m_remote_pattern_map;
     field_container_t                  m_field_container_tuple;
     buffer_info_container_t            m_buffer_info_container_tuple;
@@ -333,6 +369,8 @@ private: // members
     std::vector<func_request>          m_put_funcs;
     std::vector<func_request>          m_wait_funcs;
     std::vector<std::function<void()>> m_open_funcs;
+    std::vector<std::function<co_handle()>> m_node_local_exchanges;
+    std::vector<co_handle> m_node_local_handles;
 #ifdef GHEX_BULK_UNIQUE_TAGS
     std::map<int,int>                  m_tag_map;
 #endif
@@ -374,9 +412,21 @@ public:
 
         // store field
         f_cont.push_back(field_container<Field>(m_comm, bi.get_field(), bi.get_pattern_container(),
-            m_local_handle_map, m_local_pattern_map, m_remote_pattern_map));
+            m_local_handle_map, m_local_pattern_map, m_node_local_pattern_map, m_remote_pattern_map));
         s_range.m_ranges.resize(s_range.m_ranges.size()+1);
         t_range.m_ranges.resize(t_range.m_ranges.size()+1);
+
+
+        if (f_cont.back().m_has_node_local_halos)
+        {
+            m_node_local_exchanges.push_back([
+                field = f_cont.back().m_field,
+                co_ptr = f_cont.back().m_co.get(),
+                pat_ptr = &f_cont.back().m_node_local_pattern]() mutable
+                {
+                    return co_ptr->exchange(pat_ptr->operator()(field));
+                });
+        }
 
         auto& f = f_cont.back().m_field;
         auto field_info = f_cont.back().m_local_handle.get_info();
@@ -465,6 +515,8 @@ public:
     void init()
     {
         if (m_initialized) return;
+
+        m_node_local_handles.reserve(m_node_local_exchanges.size());
 
         // loop over Fields
         for (std::size_t i=0; i<boost::mp11::mp_size<field_types>::value; ++i)
@@ -574,6 +626,9 @@ public:
         if (!m_initialized) init();
         // loop over Fields for making the ranges writable for remotes
         for (auto& x : m_open_funcs) x();
+        // start node local exchanges
+        for (auto& ex : m_node_local_exchanges)
+            m_node_local_handles.push_back(ex());
         // start remote exchange
         auto h = exchange_remote();
         // put data as soon as ranges are writable
@@ -600,6 +655,10 @@ private:
                         r.start_target_epoch();
             });
         }
+        // wait for node local exchanges
+        for (auto& h : m_node_local_handles)
+           h.wait();
+        m_node_local_handles.clear();
     }
 };
 
