@@ -302,7 +302,7 @@ bool run(Context& context, const Pattern& pattern, const Domains& domains, const
     bco.add_field(pattern(field_a));
     bco.add_field(pattern(field_b_gpu));
 #else
-    auto bco = bulk_communication_object<structured::rma_range_generator, Pattern, decltype(field_a)>(co);
+    auto bco = bulk_communication_object<structured::rma_range_generator, Pattern, decltype(field_a)>(co,true);
     bco.add_field(pattern(field_a));
     bco.add_field(pattern(field_b));
 #endif

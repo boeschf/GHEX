@@ -229,6 +229,69 @@ private: // member types
 
         // construct from field, pattern and the maps storing rma handles, and patterns
         field_container(communicator_type comm, const Field& f, const pattern_type& pattern,
+            local_handle_map& l_handle_map, pattern_map& local_map, pattern_map& remote_map)
+        : m_field{f}
+        , m_local_handle(l_handle_map.insert(std::make_pair((void*)(f.data()),rma::local_handle{})).first->second)
+        , m_remote_pattern(remote_map.insert(std::make_pair(&pattern, pattern)).first->second)
+        , m_local_pattern(local_map.insert(std::make_pair(&pattern, pattern)).first->second)
+        , m_node_local_pattern(m_local_pattern)
+        {
+            // initialize the remote handle - this will effectively publish the rma pointers
+            // will do nothing if already initialized
+            m_local_handle.init(f.data(), f.bytes(), std::is_same<typename Field::arch_type, gpu>::value);
+
+            // prepare local and remote patterns
+            // =================================
+
+            // loop over all subdomains in pattern
+            for (int n = 0; n<pattern.size(); ++n)
+            {
+                // remove local fields from remote pattern
+                auto& r_p = m_remote_pattern[n];
+                auto r_it = r_p.send_halos().begin();
+                while (r_it != r_p.send_halos().end())
+                {
+                    const auto local = rma::is_local(comm, r_it->first.mpi_rank);
+                    if (local != rma::locality::remote) r_it = r_p.send_halos().erase(r_it);
+                    else ++r_it;
+                }
+
+                // remove remote fields from local pattern
+                auto& l_p = m_local_pattern[n];
+                auto l_it = l_p.send_halos().begin();
+                while (l_it != l_p.send_halos().end())
+                {
+                    const auto local = rma::is_local(comm, l_it->first.mpi_rank);
+                    if (local != rma::locality::remote) ++l_it;
+                    else l_it = l_p.send_halos().erase(l_it);
+                }
+
+                // remove local fields from remote pattern
+                r_it = r_p.recv_halos().begin();
+                while (r_it != r_p.recv_halos().end())
+                {
+                    const auto local = rma::is_local(comm, r_it->first.mpi_rank);
+                    if (local != rma::locality::remote) r_it = r_p.recv_halos().erase(r_it);
+                    else ++r_it;
+                }
+
+                // remove remote fields from local pattern
+                l_it = l_p.recv_halos().begin();
+                while (l_it != l_p.recv_halos().end())
+                {
+                    const auto local = rma::is_local(comm, l_it->first.mpi_rank);
+                    if (local != rma::locality::remote) ++l_it;
+                    else l_it = l_p.recv_halos().erase(l_it);
+                }
+
+                if (l_p.send_halos().size() > 0u || l_p.recv_halos().size() > 0u)
+                    m_has_local_halos = true;
+                m_has_node_local_halos = false;
+            }
+        }
+
+        // construct from field, pattern and the maps storing rma handles, and patterns
+        field_container(communicator_type comm, const Field& f, const pattern_type& pattern,
             local_handle_map& l_handle_map, pattern_map& local_map, pattern_map& node_local_map, pattern_map& remote_map)
         : m_field{f}
         , m_local_handle(l_handle_map.insert(std::make_pair((void*)(f.data()),rma::local_handle{})).first->second)
@@ -356,6 +419,7 @@ private: // member types
 private: // members
     communicator_type                  m_comm;
     co_ptr                             m_co;
+    bool                               m_use_node_local_co;
     pattern_map                        m_local_pattern_map;
     pattern_map                        m_node_local_pattern_map;
     pattern_map                        m_remote_pattern_map;
@@ -376,14 +440,16 @@ private: // members
 #endif
 
 public: // ctors
-    bulk_communication_object(communicator_type comm)
+    bulk_communication_object(communicator_type comm, bool use_node_local_co = false)
     : m_comm(comm)
     , m_co{new co_type(comm), co_deleter{true}}
+    , m_use_node_local_co{use_node_local_co}
     {}
 
-    bulk_communication_object(co_type& co)
+    bulk_communication_object(co_type& co, bool use_node_local_co = false)
     : m_comm(co.communicator())
     , m_co{&co, co_deleter{false}}
+    , m_use_node_local_co{use_node_local_co}
     {}
 
     // move only
@@ -411,22 +477,29 @@ public:
         auto& s_range = std::get<s_range_t>(m_source_ranges_tuple);
 
         // store field
-        f_cont.push_back(field_container<Field>(m_comm, bi.get_field(), bi.get_pattern_container(),
-            m_local_handle_map, m_local_pattern_map, m_node_local_pattern_map, m_remote_pattern_map));
+        if (m_use_node_local_co)
+        {
+            f_cont.push_back(field_container<Field>(m_comm, bi.get_field(), bi.get_pattern_container(),
+                m_local_handle_map, m_local_pattern_map, m_node_local_pattern_map, m_remote_pattern_map));
+            if (f_cont.back().m_has_node_local_halos)
+            {
+                m_node_local_exchanges.push_back([
+                    field = f_cont.back().m_field,
+                    co_ptr = f_cont.back().m_co.get(),
+                    pat_ptr = &f_cont.back().m_node_local_pattern]() mutable
+                    {
+                        return co_ptr->exchange(pat_ptr->operator()(field));
+                    });
+            }
+        }
+        else
+        {
+            f_cont.push_back(field_container<Field>(m_comm, bi.get_field(), bi.get_pattern_container(),
+                m_local_handle_map, m_local_pattern_map, m_remote_pattern_map));
+        }
+
         s_range.m_ranges.resize(s_range.m_ranges.size()+1);
         t_range.m_ranges.resize(t_range.m_ranges.size()+1);
-
-
-        if (f_cont.back().m_has_node_local_halos)
-        {
-            m_node_local_exchanges.push_back([
-                field = f_cont.back().m_field,
-                co_ptr = f_cont.back().m_co.get(),
-                pat_ptr = &f_cont.back().m_node_local_pattern]() mutable
-                {
-                    return co_ptr->exchange(pat_ptr->operator()(field));
-                });
-        }
 
         auto& f = f_cont.back().m_field;
         auto field_info = f_cont.back().m_local_handle.get_info();
@@ -516,6 +589,7 @@ public:
     {
         if (m_initialized) return;
 
+        if (m_use_node_local_co)
         m_node_local_handles.reserve(m_node_local_exchanges.size());
 
         // loop over Fields
@@ -627,8 +701,9 @@ public:
         // loop over Fields for making the ranges writable for remotes
         for (auto& x : m_open_funcs) x();
         // start node local exchanges
-        for (auto& ex : m_node_local_exchanges)
-            m_node_local_handles.push_back(ex());
+        if (m_use_node_local_co)
+            for (auto& ex : m_node_local_exchanges)
+                m_node_local_handles.push_back(ex());
         // start remote exchange
         auto h = exchange_remote();
         // put data as soon as ranges are writable
@@ -656,9 +731,12 @@ private:
             });
         }
         // wait for node local exchanges
-        for (auto& h : m_node_local_handles)
-           h.wait();
-        m_node_local_handles.clear();
+        if (m_use_node_local_co)
+        {
+            for (auto& h : m_node_local_handles)
+                h.wait();
+            m_node_local_handles.clear();
+        }
     }
 };
 
