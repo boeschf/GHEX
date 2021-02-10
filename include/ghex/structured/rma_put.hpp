@@ -43,7 +43,7 @@ using gpu_to_gpu = std::integral_constant<bool,
 template<typename SourceField, typename TargetField>
 #ifdef __GNUG__
 __attribute__ ((optimize ("no-tree-loop-distribute-patterns")))
-__attribute__ ((target ("sse2")))
+//__attribute__ ((target ("sse2")))
 #endif
 std::enable_if_t<
     cpu_to_cpu<SourceField,TargetField>::value && !rma_range<SourceField>::fuse_components::value>
