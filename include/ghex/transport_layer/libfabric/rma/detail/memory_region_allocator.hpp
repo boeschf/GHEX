@@ -302,4 +302,5 @@ namespace rma {
 
     template<>
     memory_region_allocator<double>::mempool_type* memory_region_allocator<double>::mempool_ptr = nullptr;
+
 }}}}}

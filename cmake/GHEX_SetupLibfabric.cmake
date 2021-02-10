@@ -21,6 +21,7 @@ ghex_option(GHEX_LIBFABRIC_WITH_BOOTSTRAPPING BOOL
   ${PMIx_FOUND} CATEGORY "libfabric" ADVANCED)
 
 if (GHEX_LIBFABRIC_WITH_BOOTSTRAPPING)
+  message("Bootstrapping enabled")
   ghex_add_config_define_namespace(
       DEFINE    GHEX_LIBFABRIC_HAVE_BOOTSTRAPPING
       VALUE     std::true_type
@@ -31,7 +32,7 @@ endif()
 # Hardware device selection
 #------------------------------------------------------------------------------
 ghex_option(GHEX_LIBFABRIC_PROVIDER STRING
-  "The provider (verbs/gni/psm2/sockets)"
+  "The provider (verbs/gni/psm2/tcp/sockets)"
   "verbs" CATEGORY "libfabric" ADVANCED)
 
 ghex_add_config_define_namespace(
@@ -50,6 +51,12 @@ elseif(GHEX_LIBFABRIC_PROVIDER MATCHES "gni")
     # enable bootstrapping, add pmi library
     set(GHEX_LIBFABRIC_WITH_BOOTSTRAPPING ON)
     set(_libfabric_libraries ${_libfabric_libraries} PMIx::libpmix)
+elseif(GHEX_LIBFABRIC_PROVIDER MATCHES "tcp")
+    ghex_add_config_define_namespace(
+        DEFINE GHEX_LIBFABRIC_TCP
+        NAMESPACE libfabric)
+    # enable bootstrapping
+    set(GHEX_LIBFABRIC_WITH_BOOTSTRAPPING OFF)
 elseif(GHEX_LIBFABRIC_PROVIDER MATCHES "sockets")
     ghex_add_config_define_namespace(
         DEFINE GHEX_LIBFABRIC_SOCKETS

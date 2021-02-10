@@ -20,6 +20,7 @@
 #endif
 
 #if defined(GHEX_LIBFABRIC_VERBS) || \
+    defined(GHEX_LIBFABRIC_TCP) || \
     defined(GHEX_LIBFABRIC_SOCKETS) || \
     defined(GHEX_LIBFABRIC_PSM2)
 # define GHEX_LIBFABRIC_LOCALITY_SIZE 16

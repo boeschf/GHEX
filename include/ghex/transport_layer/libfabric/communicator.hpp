@@ -1,12 +1,12 @@
 /*
  * GridTools
- * 
+ *
  * Copyright (c) 2014-2020, ETH Zurich
  * All rights reserved.
- * 
+ *
  * Please, refer to the LICENSE file in the root directory.
  * SPDX-License-Identifier: BSD-3-Clause
- * 
+ *
  */
 #ifndef INCLUDED_GHEX_TL_LIBFABRIC_COMMUNICATOR_HPP
 #define INCLUDED_GHEX_TL_LIBFABRIC_COMMUNICATOR_HPP
@@ -22,10 +22,10 @@ namespace gridtools {
     namespace ghex {
 
         // cppcheck-suppress ConfigurationNotChecked
-        static hpx::debug::enable_print<false> com_deb("COMMUNI");
+        static hpx::debug::enable_print<true> com_deb("COMMUNI");
 
         namespace tl {
-            namespace libfabric {            
+            namespace libfabric {
                 namespace detail {
 
                     // -----------------------------------------------------------------
@@ -77,39 +77,40 @@ namespace gridtools {
                     using controller_type = ghex::tl::libfabric::controller;
 
                     const mpi::rank_topology& m_rank_topology;
-                    std::uintptr_t            m_ctag_;
                     controller_type          *m_controller;
-                    MPI_Comm                  m_comm;
+                    struct fid_ep            *m_rx_endpoint;
+                    std::uintptr_t            m_ctag;
                     rank_type                 m_rank;
                     rank_type                 m_size;
 
-                    shared_communicator_state(const mpi::rank_topology& t, controller_type *control)
+                    shared_communicator_state(const mpi::rank_topology& t)
                         : m_rank_topology{t}
-                        , m_controller{control}
-                        , m_comm{t.mpi_comm()}
-                        , m_rank{ [](MPI_Comm c){ int r; GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(c,&r)); return r; }(t.mpi_comm()) }
-                        , m_size{ [](MPI_Comm c){ int s; GHEX_CHECK_MPI_RESULT(MPI_Comm_size(c,&s)); return s; }(t.mpi_comm()) }
+                        , m_rx_endpoint(nullptr)
                     {
-                        const int tag_value = 65535;
+                        const int random_msg_tag = 65535;
+                        GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(t.mpi_comm(), &m_rank));
+                        GHEX_CHECK_MPI_RESULT(MPI_Comm_size(t.mpi_comm(), &m_size));
                         if (m_rank==0) {
-                            m_ctag_ = reinterpret_cast<std::uintptr_t>(this);
+                            m_ctag = reinterpret_cast<std::uintptr_t>(this);
                             GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("MPI send tag")
-                                                        ,hpx::debug::hex<8>(m_ctag_)));
+                                                        ,hpx::debug::hex<8>(m_ctag)));
                             for (int i=1; i<m_size; ++i) {
-                                MPI_Send(&m_ctag_, sizeof(std::uintptr_t), MPI_CHAR, i, tag_value, m_comm);
+                                MPI_Send(&m_ctag, sizeof(std::uintptr_t), MPI_CHAR, i, random_msg_tag, t.mpi_comm());
                             }
                         }
                         else {
                             MPI_Status status;
-                            MPI_Recv(&m_ctag_, sizeof(std::uintptr_t), MPI_CHAR, 0, tag_value, m_comm, &status);
+                            MPI_Recv(&m_ctag, sizeof(std::uintptr_t), MPI_CHAR, 0, random_msg_tag, t.mpi_comm(), &status);
                             GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("MPI recv tag")
-                                                        ,hpx::debug::hex<8>(m_ctag_)));
+                                                        ,hpx::debug::hex<8>(m_ctag)));
                         }
                     }
 
-                    rank_type rank() const noexcept { return m_rank; }
-                    rank_type size() const noexcept { return m_size; }
-                    const mpi::rank_topology& rank_topology() { return m_rank_topology; }
+                    void init(controller_type *c)
+                    {
+                        m_controller  = c;
+                        m_rx_endpoint = m_controller->get_rx_endpoint();
+                    }
                 };
 
                 /** @brief communicator per-thread data.
@@ -120,24 +121,30 @@ namespace gridtools {
                     using tag_type               = typename shared_state_type::tag_type;
                     template<typename T> using future = future_t<T>;
                     using progress_status        = ghex::tl::cb::progress_status;
-                    using controller_shared      = std::shared_ptr<ghex::tl::libfabric::controller>;
+                    using controller_type        = ghex::tl::libfabric::controller;
 
-                    struct fid_ep       *endpoint_;
-                    struct fid_domain   *fabric_domain_;
+                    struct fid_ep *m_tx_endpoint = nullptr;
                     //
                     int  m_progressed_sends = 0;
                     int  m_progressed_recvs = 0;
                     int m_progressed_cancels = 0;
                     //
 
-                    communicator_state(struct fid_ep *endpoint, struct fid_domain *domain)
-                    : endpoint_{endpoint}
-                    , fabric_domain_{domain}
+                    communicator_state() = default;
+                    communicator_state(communicator_state &&) = default;
+
+                    communicator_state(struct fid_ep *endpoint)
                     {
+                        m_tx_endpoint = endpoint;
                     }
 
                     ~communicator_state()
                     {
+                    }
+
+                    void init(controller_type *c)
+                    {
+                        m_tx_endpoint = c->get_tx_endpoint();
                     }
 
                     progress_status progress() {
@@ -216,19 +223,24 @@ namespace gridtools {
                     communicator& operator=(communicator&&) = default;
 
                   public: // member functions
-                    rank_type rank() const noexcept { return m_shared_state->rank(); }
-                    rank_type size() const noexcept { return m_shared_state->size(); }
-                    address_type address() const noexcept { return rank(); }
+                    rank_type rank() const noexcept { return m_shared_state->m_rank; }
+                    rank_type size() const noexcept { return m_shared_state->m_size; }
+                    address_type address() const noexcept { return m_shared_state->m_rank; }
 
-                    bool is_local(rank_type r) const noexcept { return m_shared_state->rank_topology().is_local(r); }
-                    rank_type local_rank() const noexcept { return m_shared_state->rank_topology().local_rank(); }
-                    auto mpi_comm() const noexcept { return m_shared_state->rank_topology().mpi_comm(); }
+                    bool is_local(rank_type r) const noexcept { return m_shared_state->m_rank_topology.is_local(r); }
+                    rank_type local_rank() const noexcept { return m_shared_state->m_rank_topology.local_rank(); }
+                    auto mpi_comm() const noexcept { return m_shared_state->m_rank_topology.mpi_comm(); }
 
-                    inline std::uint64_t make_tag64(std::uint32_t tag) {
-                        return (std::uint64_t(m_shared_state->m_ctag_) << 32) |
-                                (std::uint64_t(tag & 0xFFFFFFFF));
+                    // generate a tag with 0xaaaaaaaarrrrtttt
+                    inline std::uint64_t make_tag64(std::uint32_t tag, std::uint32_t rank) {
+                        return (((std::uint64_t(m_shared_state->m_ctag) & 0x00000000FFFFFFFF) << 32) |
+                                ((std::uint64_t(rank)                   & 0x0000000000000000) << 16) |
+                                ((std::uint64_t(tag)                    & 0x000000000000FFFF)));
                     }
 
+                    inline rma::memory_pool<region_provider> *get_memory_pool() {
+                        return &m_shared_state->m_controller->get_memory_pool_ptr();
+                    }
 
                     // --------------------------------------------------------------------
                     // this takes a pinned memory region and sends it
@@ -240,13 +252,14 @@ namespace gridtools {
 //                        ++sends_posted_;
 
                         GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("send message buffer")
-                                                    , *send_region
+                                                    , "->", hpx::debug::dec<2>(dst_addr_)
+//                                                    , *send_region
                                                     , "tag", hpx::debug::hex<16>(tag_)));
 
                         bool ok = false;
                         while (!ok) {
                             ssize_t ret;
-                            ret = fi_tsend(m_state->endpoint_,
+                            ret = fi_tsend(m_state->m_tx_endpoint,
                                            send_region->get_address(),
                                            send_region->get_message_length(),
                                            send_region->get_local_key(),
@@ -279,14 +292,15 @@ namespace gridtools {
                         [[maybe_unused]] auto scp = com_deb.scope(__func__);
 
                         GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("recv message buffer")
-                                                    , *recv_region
+                                                    , "<-", hpx::debug::dec<2>(src_addr_)
+//                                                    , *recv_region
                                                     , "tag", hpx::debug::hex<16>(tag_)));
 
                         // this should never actually return true and yield/sleep
                         bool ok = false;
                         while(!ok) {
                             uint64_t ignore = 0;
-                            ssize_t ret = fi_trecv(m_state->endpoint_,
+                            ssize_t ret = fi_trecv(m_shared_state->m_rx_endpoint,
                                 recv_region->get_address(),
                                 recv_region->get_size(),
                                 recv_region->get_local_key(),
@@ -318,7 +332,7 @@ namespace gridtools {
                     {
                         [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(future)");
 
-                        std::uint64_t stag = make_tag64(tag);
+                        std::uint64_t stag = make_tag64(tag, dst);
 
                         // get main libfabric controller
                         auto controller = m_shared_state->m_controller;
@@ -329,9 +343,9 @@ namespace gridtools {
                             request_kind::send,
                             std::shared_ptr<context_info>(
                                         new context_info{fi_context{}, false,
-                                                         m_state->endpoint_,
+                                                         m_state->m_tx_endpoint,
                                                          nullptr,
-                                                         libfabric_region_holder()})
+                                                         libfabric_region_holder(), [](){}, stag, true})
                         };
 
                         req.m_lf_ctxt->user_cb_ = [p=req.m_lf_ctxt]() {
@@ -339,15 +353,15 @@ namespace gridtools {
                             p->message_holder_.clear();
                             p->message_region_ = nullptr;
                             GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Send (future)"), "F(set)"));
-                            p->m_ready = true;
+                            p->set_ready();
                         };
                         req.m_lf_ctxt->init_message_data(msg, stag);
 
                         GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Send (future)")
-                            , "thisrank", hpx::debug::dec<>(rank())
+//                            , "thisrank", hpx::debug::dec<>(rank())
                             , "rank", hpx::debug::dec<>(dst)
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
-                            , "ctag", hpx::debug::hex<8>(m_shared_state->m_ctag_)
+                            , "ctag", hpx::debug::hex<8>(m_shared_state->m_ctag)
                             , "stag", hpx::debug::hex<16>(stag)
                             , "addr", hpx::debug::ptr(msg.data())
                             , "size", hpx::debug::hex<6>(msg.size())));
@@ -361,9 +375,6 @@ namespace gridtools {
 
                     template<typename CallBack>
                     request_cb_type send(any_libfabric_message& msg, rank_type dst, tag_type tag, CallBack&& callback) {
-//std::cout << "Using reference send function "
-//          << "Sizeof context_info == " << sizeof(context_info)
-//          << std::endl;
                         GHEX_CHECK_CALLBACK_F(message_type,rank_type,tag_type)
                         using V = typename std::remove_reference_t<any_libfabric_message>::value_type;
                         return send(message_type{libfabric_ref_message<V>{msg.data(),msg.size(), msg.m_holder.m_region}}, dst, tag, std::forward<CallBack>(callback));
@@ -384,7 +395,7 @@ namespace gridtools {
                     {
                         [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(callback)");
 
-                        std::uint64_t stag = make_tag64(tag);
+                        std::uint64_t stag = make_tag64(tag, dst);
 
                         // get main libfabric controller
                         auto controller = m_shared_state->m_controller;
@@ -395,9 +406,9 @@ namespace gridtools {
                             request_kind::send,
                             std::shared_ptr<context_info>(
                                         new context_info{fi_context{}, false,
-                                                         m_state->endpoint_,
+                                                         m_state->m_tx_endpoint,
                                                          nullptr,
-                                                         libfabric_region_holder()})
+                                                         libfabric_region_holder(), [](){}, stag, true})
                         };
 
                         req.m_lf_ctxt->init_message_data(msg, stag);
@@ -418,15 +429,14 @@ namespace gridtools {
                             // cleanup temp region if necessary
                             p->message_holder_.clear();
                             p->message_region_ = nullptr;
-                            p->m_ready = true;
+                            p->set_ready();
                         };
 
-
                         GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Send any"), "(callback)"
-                         , "thisrank", hpx::debug::dec<>(rank())
+//                         , "thisrank", hpx::debug::dec<>(rank())
                          , "rank", hpx::debug::dec<>(dst)
                          , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
-                         , "ctag", hpx::debug::hex<8>(m_shared_state->m_ctag_)
+                         , "ctag", hpx::debug::hex<8>(m_shared_state->m_ctag)
                          , "stag", hpx::debug::hex<16>(stag)
                          , "addr", hpx::debug::ptr(msg.data())
                          , "size", hpx::debug::hex<6>(msg.size())));
@@ -448,10 +458,10 @@ namespace gridtools {
                     [[nodiscard]] future<void> recv(Message &msg, rank_type src, tag_type tag)
                     {
                         [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(future)");
-                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("map contents")
-                                            , m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map()));
+//                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("map contents")
+//                                            , m_shared_state->m_controller->get_memory_pool()->region_alloc_pointer_map_.debug_map()));
 
-                        std::uint64_t stag = make_tag64(tag);
+                        std::uint64_t stag = make_tag64(tag, src);
 
                         // main libfabric controller
                         auto controller = m_shared_state->m_controller;
@@ -462,25 +472,25 @@ namespace gridtools {
                             request_kind::recv,
                             std::shared_ptr<context_info>(
                                         new context_info{fi_context{}, false,
-                                                         m_state->endpoint_,
+                                                         m_shared_state->m_rx_endpoint,
                                                          nullptr,
-                                                         libfabric_region_holder()})
+                                                         libfabric_region_holder(), [](){}, stag, false})
                         };
 
                         req.m_lf_ctxt->init_message_data(msg, stag);
 
                         GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Recv (future)")
-                            , "thisrank", hpx::debug::dec<>(rank())
+//                            , "thisrank", hpx::debug::dec<>(rank())
                             , "rank", hpx::debug::dec<>(src)
-                            , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
-                            , "ctag", hpx::debug::hex<8>(m_shared_state->m_ctag_)
+                            , "tag",  hpx::debug::hex<16>(std::uint64_t(tag))
+                            , "ctag", hpx::debug::hex<8>(m_shared_state->m_ctag)
                             , "stag", hpx::debug::hex<16>(stag)
                             , "addr", hpx::debug::ptr(msg.data())
                             , "size", hpx::debug::hex<6>(msg.size())));
 
                         req.m_lf_ctxt->user_cb_ = [p=req.m_lf_ctxt](){
                             GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Recv (future)"), "F(set)"));
-                            p->m_ready = true;
+                            p->set_ready();
                         };
 
                         receive_tagged_region(req.m_lf_ctxt->message_region_, fi_addr_t(src), stag, req.m_lf_ctxt.get());
@@ -492,10 +502,10 @@ namespace gridtools {
                     request_cb_type recv(any_libfabric_message &&msg, rank_type src, tag_type tag, CallBack&& callback)
                     {
                         [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(callback)");
-                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("map contents")
-                                            , m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map()));
+//                        GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("map contents")
+//                                            , m_shared_state->m_controller->memory_pool_->region_alloc_pointer_map_.debug_map()));
 
-                        std::uint64_t stag = make_tag64(tag);
+                        std::uint64_t stag = make_tag64(tag, src);
 
                         // main libfabric controller
                         auto controller = m_shared_state->m_controller;
@@ -506,18 +516,18 @@ namespace gridtools {
                             request_kind::recv,
                             std::shared_ptr<context_info>(
                                         new context_info{fi_context{}, false,
-                                                         m_state->endpoint_,
+                                                         m_shared_state->m_rx_endpoint,
                                                          nullptr,
-                                                         libfabric_region_holder()})
+                                                         libfabric_region_holder(), [](){}, stag, false})
                         };
 
                         req.m_lf_ctxt->init_message_data(msg, stag);
 
                         GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Recv (callback)")
-                            , "thisrank", hpx::debug::dec<>(rank())
+//                            , "thisrank", hpx::debug::dec<>(rank())
                             , "rank", hpx::debug::dec<>(src)
                             , "tag", hpx::debug::hex<16>(std::uint64_t(tag))
-                            , "ctag", hpx::debug::hex<8>(m_shared_state->m_ctag_)
+                            , "ctag", hpx::debug::hex<8>(m_shared_state->m_ctag)
                             , "stag", hpx::debug::hex<16>(stag)
                             , "addr", hpx::debug::ptr(msg.data())
                             , "size", hpx::debug::hex<6>(msg.size())));
@@ -533,7 +543,7 @@ namespace gridtools {
                             GHEX_DP_ONLY(com_deb, debug(hpx::debug::str<>("Recv (callback)")
                                  , "F(set)", hpx::debug::dec<>(src)));
                             callback(std::move(msg), src, tag);
-                            p->m_ready = true;
+                            p->set_ready();
                         };
 
                         // perform a send with the callback for when transfer is complete

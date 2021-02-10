@@ -20,7 +20,32 @@ namespace gridtools {
         namespace tl {
             namespace libfabric {
             // cppcheck-suppress ConfigurationNotChecked
-            static hpx::debug::enable_print<false> ctx_deb("CONTEXT");
+            static hpx::debug::enable_print<true> ctx_deb("CONTEXT");
+
+            using controller_type = ghex::tl::libfabric::controller;
+
+            // --------------------------------------------------
+            // create a singleton ptr to a libfabric controller that
+            // can be shared between ghex context objects
+            static std::shared_ptr<controller_type> init_libfabric_controller(MPI_Comm comm, int rank, int size)
+            {
+                // static std::atomic_flag initialized = ATOMIC_FLAG_INIT;
+                // if (initialized.test_and_set()) return;
+
+                // only allow one thread to pass, make other wait
+                static std::mutex m_init_mutex;
+                std::lock_guard<std::mutex> lock(m_init_mutex);
+                static std::shared_ptr<controller_type> instance(nullptr);
+                if (!instance.get()) {
+                    std::cout << "Initializing new controller" << std::endl;
+                    instance.reset(new controller_type(
+                            GHEX_LIBFABRIC_PROVIDER,
+                            GHEX_LIBFABRIC_DOMAIN,
+                            comm, rank, size
+                        ));
+                }
+                return instance;
+            }
 
             struct transport_context
             {
@@ -32,43 +57,27 @@ namespace gridtools {
                 using state_vector           = std::vector<state_ptr>;
                 using controller_type        = ghex::tl::libfabric::controller;
 
-                const mpi::rank_topology& m_rank_topology;
-                MPI_Comm                  m_comm;
-                int                       m_rank;
-                int                       m_size;
-                controller_type          *m_controller;
+                std::shared_ptr<controller_type> m_controller;
                 state_vector              m_states;
                 shared_state_type         m_shared_state;
                 state_type                m_state;
                 std::mutex                m_mutex;
 
                 // --------------------------------------------------
-                // create a singleton shared_ptr to a libfabric controller that
-                // can be shared between ghex context objects
-                static controller_type *init_libfabric_controller(MPI_Comm comm, int rank, int size)
-                {
-                    static std::mutex m_init_mutex;
-                    std::lock_guard<std::mutex> lock(m_init_mutex);
-                    static std::unique_ptr<controller_type> instance(new controller_type(
-                            GHEX_LIBFABRIC_PROVIDER,
-                            GHEX_LIBFABRIC_DOMAIN,
-                            comm, rank, size
-                        ));
-                    instance->startup();
-                    return instance.get();
-                }
-
-                // --------------------------------------------------
                 transport_context(const mpi::rank_topology& t)
-                  : m_rank_topology{t}
+                    : m_controller{nullptr}
                   , m_states()
-                  , m_comm{t.mpi_comm()}
-                  , m_rank{ [](MPI_Comm c){ int r; GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(c,&r)); return r; }(m_comm) }
-                  , m_size{ [](MPI_Comm c){ int s; GHEX_CHECK_MPI_RESULT(MPI_Comm_size(c,&s)); return s; }(m_comm) }
-                  , m_controller(init_libfabric_controller(m_comm, m_rank, m_size))
-                  , m_shared_state{m_rank_topology, m_controller}
-                  , m_state{m_controller->ep_active_, m_controller->fabric_domain_}
+                    , m_shared_state{t}
+                    , m_state{nullptr}
+                    , m_mutex()
                 {
+                    int rank, size;
+                    GHEX_CHECK_MPI_RESULT(MPI_Comm_rank(t.mpi_comm(), &rank));
+                    GHEX_CHECK_MPI_RESULT(MPI_Comm_size(t.mpi_comm(), &size));
+                    m_controller = init_libfabric_controller(t.mpi_comm(), rank, size);
+                    //
+                    m_shared_state.init(m_controller.get());
+                    m_state.init(m_controller.get());
                 }
 
                 communicator_type get_serial_communicator()
@@ -78,15 +87,17 @@ namespace gridtools {
 
                 communicator_type get_communicator()
                 {
-                    std::lock_guard<std::mutex> lock(m_mutex); // we need to guard only the insertion in the vector,
+                    // we need to guard only the insertion in the vector,
                                                                // but this is not a performance critical section
-                    m_states.push_back(std::make_unique<state_type>(m_controller->ep_active_, m_controller->fabric_domain_));
-                    return {&m_shared_state, m_states[m_states.size()-1].get()};
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    //
+                    m_states.push_back(std::make_unique<state_type>(m_controller->get_tx_endpoint()));
+                    return {&m_shared_state, m_states.back().get()};
                 }
 
                 controller_type *get_libfabric_controller()
                 {
-                    return m_controller;
+                    return m_controller.get();
                 }
             };
 
@@ -100,9 +111,6 @@ namespace gridtools {
             {
                 auto new_comm = detail::clone_mpi_comm(mpi_comm);
                 return std::unique_ptr<context_type>{
-                    // pass comm twice as the context constructor needs it
-                    // and passes it on to the libfabric::transport_context
-                    // constructor as another arg
                     new context_type{new_comm}};
             }
         };

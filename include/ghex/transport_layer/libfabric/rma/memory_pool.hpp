@@ -102,6 +102,21 @@ namespace rma
         typedef detail::memory_block_allocator<RegionProvider> allocator_type;
         typedef std::shared_ptr<region_type>                    region_ptr;
 
+        // --------------------------------------------------
+        // create a singleton ptr to a libfabric controller that
+        // can be shared between ghex context objects
+        static std::shared_ptr<memory_pool> init_memory_pool(domain_type *pd)
+        {
+            static std::mutex m_init_mutex;
+            std::lock_guard<std::mutex> lock(m_init_mutex);
+            static std::shared_ptr<memory_pool> instance(nullptr);
+            if (!instance.get()) {
+                std::cout << "Initializing new mempool" << std::endl;
+                instance.reset(new memory_pool(pd));
+            }
+            return instance;
+        }
+
         //----------------------------------------------------------------------------
         // constructor
         memory_pool(domain_type *pd) :
@@ -344,6 +359,7 @@ namespace rma
         // holds the registration information
         hpx::concurrent::unordered_map<const void *, region_type*>
             region_alloc_pointer_map_;
+
     };
 
 }}}}}

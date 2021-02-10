@@ -16,6 +16,9 @@
 #include <ghex/transport_layer/callback_utils.hpp>
 #include <ghex/transport_layer/libfabric/controller.hpp>
 
+// cppcheck-suppress ConfigurationNotChecked
+static hpx::debug::enable_print<true> req_deb("REQUEST");
+
 namespace gridtools{ namespace ghex { namespace tl { namespace libfabric {
 
         using region_provider    = libfabric_region_provider;
@@ -30,12 +33,14 @@ namespace gridtools{ namespace ghex { namespace tl { namespace libfabric {
         // Extract RMA handle info from the message
         void context_info::init_message_data(const libfabric_msg_type &msg, uint64_t tag)
         {
+            tag_ = tag;
             message_region_ = msg.get_buffer().m_pointer.region_;
             message_region_->set_message_length(msg.size());
         }
 
         void context_info::init_message_data(const any_libfabric_message &msg, uint64_t tag)
         {
+            tag_ = tag;
             message_region_ = msg.region();
             message_region_->set_message_length(msg.size());
         }
@@ -46,6 +51,7 @@ namespace gridtools{ namespace ghex { namespace tl { namespace libfabric {
                       !std::is_same<any_libfabric_message, Message>::value>::type>
         void context_info::init_message_data(Message &msg, uint64_t tag)
         {
+            tag_ = tag;
             message_holder_.set_rma_from_pointer(msg.data(), msg.size());
             message_region_ = message_holder_.m_region;
         }
@@ -54,6 +60,8 @@ namespace gridtools{ namespace ghex { namespace tl { namespace libfabric {
         // Called when a send completes
         int context_info::handle_send_completion()
         {
+            GHEX_DP_ONLY(req_deb, debug(hpx::debug::str<>("handle_send_completion")
+                                        ,hpx::debug::hex<8>(tag_)));
             // invoke the user supplied callback
             user_cb_();
             return 1;
@@ -61,6 +69,8 @@ namespace gridtools{ namespace ghex { namespace tl { namespace libfabric {
 
         int context_info::handle_recv_completion(std::uint64_t /*len*/)
         {
+            GHEX_DP_ONLY(req_deb, debug(hpx::debug::str<>("handle_recv_completion")
+                                        ,hpx::debug::hex<8>(tag_)));
             // call user supplied completion callback
             user_cb_();
             return 1;
@@ -90,9 +100,12 @@ namespace gridtools{ namespace ghex { namespace tl { namespace libfabric {
             std::shared_ptr<libfabric::context_info> m_lf_ctxt = nullptr;
 
             request_t() noexcept = default;
+            request_t(request_t&&) = default;
+            request_t(request_t &) = default;
+            request_t& operator= (request_t &&) = default;
 
             // we don't bother checking if m_controller is valid because
-            // a request should never be created without it
+            // a request could/should never be created without it
             bool test()
             {
                 if (!m_lf_ctxt ) {

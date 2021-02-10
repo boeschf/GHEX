@@ -193,6 +193,18 @@ foreach (_t ${_tests_rma})
         endif()
     endif()
 
+    if (GHEX_USE_LIBFABRIC)
+
+        set(t ${_t}_libfabric)
+        add_executable(${t} ${_t}.cpp)
+        target_link_libraries(${t} gtest_main_libfabric)
+        target_compile_definitions(${t} PUBLIC GHEX_TEST_USE_LIBFABRIC)
+        add_test(
+            NAME ${t}
+            COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 ${MPIEXEC_PREFLAGS} $<TARGET_FILE:${t}> ${MPIEXEC_POSTFLAGS}
+        )
+    endif()
+
     if (GHEX_USE_UCP)
 
         set(t ${_t}_ucx)
