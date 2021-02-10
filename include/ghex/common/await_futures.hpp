@@ -65,6 +65,18 @@ inline void await_requests(std::vector<Request>& range)
     await_requests(range, [](){});
 }
 
+template<typename Request, typename Progress>
+inline void await_requests_in_order(std::vector<Request>& range, Progress&& progress)
+{
+    for (auto& r : range)
+    {
+        while (!r.test())
+        {
+            progress();
+        }
+    }
+}
+
 } // namespace ghex
 } // namespace gridtools
 
