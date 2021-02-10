@@ -35,6 +35,10 @@ struct reduced_layout_map<Idx, std::index_sequence<Ms...>, LMap>{
 template<typename Arch, typename LayoutMap>
 struct serialization {
     template<typename PackIterationSpace>
+#ifdef __GNUG__
+__attribute__ ((optimize ("no-tree-loop-distribute-patterns")))
+//__attribute__ ((target ("sse2")))
+#endif
     static void pack(PackIterationSpace&& pack_is, void*) {
         using coordinate_type = typename PackIterationSpace::coordinate_t;
         static constexpr auto D = coordinate_type::size();
@@ -47,6 +51,10 @@ struct serialization {
     }
 
     template<typename UnPackIterationSpace>
+#ifdef __GNUG__
+__attribute__ ((optimize ("no-tree-loop-distribute-patterns")))
+//__attribute__ ((target ("sse2")))
+#endif
     static void unpack(UnPackIterationSpace&& unpack_is, void*) {
         using coordinate_type = typename UnPackIterationSpace::coordinate_t;
         static constexpr auto D = coordinate_type::size();

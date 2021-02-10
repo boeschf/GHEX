@@ -707,7 +707,7 @@ public:
         // start remote exchange
         auto h = exchange_remote();
         // put data as soon as ranges are writable
-        await_requests_in_order(m_put_funcs, [comm = m_comm]() mutable {comm.progress();});
+        await_requests(m_put_funcs, [comm = m_comm]() mutable {comm.progress();});
         return {std::move(h),this};
     }
 
