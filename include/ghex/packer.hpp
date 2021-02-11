@@ -39,6 +39,7 @@ namespace gridtools {
                             for (const auto& fb : p1.second.field_infos)
                                 fb.call_back( p1.second.buffer.data() + fb.offset, *fb.index_container, nullptr);
                             send_futures.push_back(comm.send(p1.second.buffer, p1.second.address, p1.second.tag));
+                            send_futures.back().test();
                         }
                     }
                 }
