@@ -77,6 +77,7 @@
 // ------------------------------------------------
 #define GHEX_LIBFABRIC_ENDPOINT_RDM
 // #define GHEX_LIBFABRIC_THREAD_LOCAL_ENDPOINTS
+//#define GHEX_SEPARATE_RX_TX_ENDPOINTS
 
 // ------------------------------------------------
 // Needed on Cray for GNI extensions
@@ -253,10 +254,6 @@ struct context_info {
 
             open_fabric(provider, domain, rank);
 
-            // @TODO remove this set of flags, I think it's wrong here
-            fabric_info_->tx_attr->op_flags |= FI_COMPLETION;
-            fabric_info_->rx_attr->op_flags |= FI_COMPLETION;
-
             // Create a memory pool for pinned buffers
             memory_pool_ = rma::memory_pool<region_provider>::init_memory_pool(fabric_domain_);
 
@@ -267,9 +264,36 @@ struct context_info {
 
             // setup an endpoint for receiving messages
             // rx endpoint is shared by all threads
-            ep_rx_ = new_endpoint_active(fabric_domain_, fabric_info_);
+            here_ = locality("127.0.0.1", "7909");
+            ep_rx_ = new_endpoint_active(fabric_domain_, fabric_info_, here_.fabric_data(), rank);
+
             // create an address vector that will be bound to endpoints
             av_ = create_address_vector(fabric_info_, size);
+
+            // bind address vector
+            bind_address_vector_to_endpoint(ep_rx_, av_);
+
+            // create a completion queue for the rx endpoint
+            fabric_info_->rx_attr->op_flags |= FI_COMPLETION;
+            rxcq_ = create_completion_queue(fabric_domain_, fabric_info_->rx_attr->size);
+
+            // bind CQ to endpoint
+            bind_queue_to_endpoint(ep_rx_, rxcq_, FI_RECV);
+
+            // create a completion queue for tx
+            fabric_info_->tx_attr->op_flags |= FI_COMPLETION;
+            txcq_ = create_completion_queue(fabric_domain_, fabric_info_->tx_attr->size);
+
+#ifdef GHEX_SEPARATE_RX_TX_ENDPOINTS
+            // setup an endpoint for sending messages
+            // this endpoint will be thread local in future
+            ep_tx_ = new_endpoint_active(fabric_domain_, fabric_info_, nullptr, rank);
+            bind_queue_to_endpoint(ep_tx_, txcq_, FI_TRANSMIT | FI_RECV);
+            bind_address_vector_to_endpoint(ep_tx_, av_);
+            enable_endpoint(ep_tx_);
+#else
+            bind_queue_to_endpoint(ep_rx_, txcq_, FI_TRANSMIT);
+# endif
             // once enabled we can get the address
             enable_endpoint(ep_rx_);
             here_ = get_endpoint_address(&ep_rx_->fid);
@@ -277,28 +301,6 @@ struct context_info {
             // Broadcast address of all endpoints to all ranks
             // and fill address vector with info
             exchange_addresses(mpi_comm, rank, size);
-
-            // bind address vector
-            bind_address_vector_to_endpoint(ep_rx_, av_);
-            // create a completion queue for the rx endpoint
-            rxcq_ = create_completion_queue(fabric_domain_, fabric_info_->rx_attr->size);
-            // bind CQ to endpoint
-            bind_queue_to_endpoint(ep_rx_, rxcq_, FI_RECV);
-
-            // create a completion queue for the tx endpoint
-            txcq_ = create_completion_queue(fabric_domain_, fabric_info_->tx_attr->size);
-
-#ifdef SEPARATE_RX_TX_ENDPOINTS
-            // setup an endpoint for sending messages
-            // this endpoint will be thread local in future
-            ep_tx_ = new_endpoint_active(fabric_domain_, fabric_info_);
-            enable_endpoint(ep_tx_);
-            //
-            bind_queue_to_endpoint(ep_tx_, txcq_, FI_SEND);
-            bind_address_vector_to_endpoint(ep_tx_, av_);
-#else
-            bind_queue_to_endpoint(ep_rx_, txcq_, FI_TRANSMIT | FI_SEND);
-# endif
         }
 
         // --------------------------------------------------------------------
@@ -427,29 +429,28 @@ struct context_info {
                 throw fabric_error(-1, "Failed to allocate fabric hints");
             }
 
-            here_ = locality("127.0.0.1", "7909");
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Here locality") , iplocality(here_)));
 
 #if defined(GHEX_LIBFABRIC_SOCKETS) || defined(GHEX_LIBFABRIC_TCP)
 
             fabric_hints_->addr_format  = FI_SOCKADDR_IN;
             // this memory will (should) be deleted in hints destructor
-            struct sockaddr_in *socket_data = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
-            memcpy(socket_data, here_.fabric_data(), locality_defs::array_size);
+//            struct sockaddr_in *socket_data = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
+//            memcpy(socket_data, here_.fabric_data(), locality_defs::array_size);
 
             // If we are the root node, then create connection with the right port address
-            if (rank == 0) {
-                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("root locality = src")
-                              , iplocality(root_)));
-                fabric_hints_->src_addr     = socket_data;
-                fabric_hints_->src_addrlen  = sizeof(struct sockaddr_in);
-            }
-            else {
-                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("root locality = dest")
-                              , iplocality(root_)));
-                fabric_hints_->dest_addr    = socket_data;
-                fabric_hints_->dest_addrlen = sizeof(struct sockaddr_in);
-            }
+//            if (rank == 0) {
+//                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("root locality = src")
+//                              , iplocality(root_)));
+//                fabric_hints_->src_addr     = socket_data;
+//                fabric_hints_->src_addrlen  = sizeof(struct sockaddr_in);
+//            }
+//            else {
+//                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("root locality = dest")
+//                              , iplocality(root_)));
+//                fabric_hints_->dest_addr    = socket_data;
+//                fabric_hints_->dest_addrlen = sizeof(struct sockaddr_in);
+//            }
 #endif
 
             fabric_hints_->caps = FI_MSG | FI_TAGGED | FI_DIRECTED_RECV /*| FI_SOURCE*/;
@@ -459,7 +460,7 @@ struct context_info {
                 fabric_hints_->fabric_attr->prov_name = strdup(std::string(provider + ";ofi_rxm").c_str());
             }
             else {
-            fabric_hints_->fabric_attr->prov_name = strdup(provider.c_str());
+                fabric_hints_->fabric_attr->prov_name = strdup(provider.c_str());
             }
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("fabric provider")
                 , fabric_hints_->fabric_attr->prov_name));
@@ -470,9 +471,12 @@ struct context_info {
             }
 
             // use infiniband type basic registration for now
-//            fabric_hints_->domain_attr->mr_mode = FI_MR_BASIC;
-            fabric_hints_->domain_attr->mr_mode = FI_MR_SCALABLE;
-
+#ifdef GHEX_LIBFABRIC_PROVIDER_GNI
+            fabric_hints_->domain_attr->mr_mode = FI_MR_BASIC;
+#else
+            fabric_hints_->domain_attr->mr_mode = FI_MR_BASIC;
+//            fabric_hints_->domain_attr->mr_mode = FI_MR_SCALABLE;
+#endif
             // Disable the use of progress threads
 //            fabric_hints_->domain_attr->control_progress = FI_PROGRESS_MANUAL;
 //            fabric_hints_->domain_attr->data_progress = FI_PROGRESS_MANUAL;
@@ -487,10 +491,6 @@ struct context_info {
 
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("fabric endpoint"), "RDM"));
             fabric_hints_->ep_attr->type = FI_EP_RDM;
-
-            // by default, we will always want completions on both tx/rx events
-            fabric_hints_->tx_attr->op_flags = FI_COMPLETION;
-            fabric_hints_->rx_attr->op_flags = FI_COMPLETION;
 
             uint64_t flags = 0;
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("get fabric info")
@@ -522,17 +522,34 @@ struct context_info {
             if (ret) throw fabric_error(ret, "fi_domain");
 
 #ifdef GHEX_LIBFABRIC_PROVIDER_GNI
-            // Enable use of udreg instead of internal MR cache
-            ret = _set_check_domain_op_value(GNI_MR_CACHE, "udreg");
+            [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, "GNI memory registration block");
 
+#ifdef GHEX_GNI_UDREG
+            // option 1)
+            // Enable use of udreg instead of internal MR cache
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("setting GNI_MR_CACHE = udreg")));
+            ret = _set_check_domain_op_value(GNI_MR_CACHE, "udreg");
+            if (ret) throw fabric_error(ret, "setting GNI_MR_CACHE = udreg");
+#else
+            // option 2)
+            // Disable memory registration cache completely
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("setting GNI_MR_CACHE = none")));
+            ret = _set_check_domain_op_value(GNI_MR_CACHE, "none");
+            if (ret) throw fabric_error(ret, "setting GNI_MR_CACHE = none");
+#endif
             // Experiments showed default value of 2048 too high if
             // launching multiple clients on one node
             int32_t udreg_limit = 1024;
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("setting GNI_MR_UDREG_REG_LIMIT ="), hpx::debug::dec<4>(1024)));
             ret = gni_set_domain_op_value(
                 fabric_domain_, GNI_MR_UDREG_REG_LIMIT, &udreg_limit);
+            if (ret) throw fabric_error(ret, "setting GNI_MR_UDREG_REG_LIMIT");
 
-        // Cray specific. Disable memory registration cache completely
-        _set_disable_registration();
+            int32_t enable = 1;
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("setting GNI_MR_CACHE_LAZY_DEREG")));
+            // Enable lazy deregistration in MR cache
+            ret = na_ofi_gni_set_domain_op_value(
+                na_ofi_domain, GNI_MR_CACHE_LAZY_DEREG, &enable);
 #endif
             fi_freeinfo(fabric_hints_);
         }
@@ -564,24 +581,69 @@ struct context_info {
 #endif
         }
 
-        void _set_disable_registration()
-        {
-            [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
-#ifdef GHEX_LIBFABRIC_PROVIDER_GNI
-            [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
-            _set_check_domain_op_value(GNI_MR_CACHE, "none");
-#endif
-        }
 
         // --------------------------------------------------------------------
-        struct fid_ep *new_endpoint_active(struct fid_domain *domain, struct fi_info *info)
+        struct fid_ep *new_endpoint_active(struct fid_domain *domain, struct fi_info *info, void const *src_addr, int rank)
         {
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Got info mode")
                                 , (info->mode & FI_NOTIFY_FLAGS_ONLY)));
+
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("fi_dupinfo")));
+            struct fi_info *hints = fi_dupinfo(info);
+            if (!hints) throw fabric_error(0, "fi_dupinfo");
+
+#if defined(GHEX_LIBFABRIC_PROVIDER_SOCKETS) || defined(GHEX_LIBFABRIC_PROVIDER_TCP)
+            if (rank==0 && src_addr) {
+                /* Set src addr hints (FI_SOURCE must not be set in that case) */
+//                free(hints->src_addr);
+                struct sockaddr_in *socket_data = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
+                memcpy(socket_data, src_addr, locality_defs::array_size);
+                hints->addr_format = FI_SOCKADDR_IN;
+                hints->src_addr    = socket_data;
+                hints->src_addrlen = sizeof(struct sockaddr_in);
+            }
+            else {
+//                hints->src_addr    = nullptr;
+            }
+#endif
+            int flags = 0;
+            struct fi_info *new_hints = nullptr;
+            int ret = fi_getinfo(FI_VERSION(GHEX_LIBFABRIC_FI_VERSION_MAJOR, GHEX_LIBFABRIC_FI_VERSION_MINOR),
+                nullptr, nullptr, flags, hints, &new_hints);
+            if (ret) throw fabric_error(ret, "fi_getinfo");
+
+
+                        // If we are the root node, then create connection with the right port address
+            //            if (rank == 0) {
+            //                GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("root locality = src")
+            //                              , iplocality(root_)));
+            //                fabric_hints_->src_addr     = socket_data;
+            //                fabric_hints_->src_addrlen  = sizeof(struct sockaddr_in);
+            //            }
+
+//            if (src_addr) {
+//                struct sockaddr_in *socket_data = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
+//                memcpy(socket_data, here_.fabric_data(), locality_defs::array_size);
+
+//                /* Set src addr hints (FI_SOURCE must not be set in that case) */
+//                free(hints->src_addr);
+//                hints->addr_format = na_ofi_prov_addr_format[na_ofi_domain->prov_type];
+//                hints->src_addr = src_addr;
+//                hints->src_addrlen = src_addrlen;
+//            }
+
             struct fid_ep *ep;
-            int ret = fi_endpoint(domain, info, &ep, nullptr);
+            ret = fi_endpoint(domain, new_hints, &ep, nullptr);
             if (ret) throw fabric_error(ret, "fi_endpoint");
+
+            if (hints) {
+                // Prevent fi_freeinfo() from freeing src_add
+                if (src_addr)
+                    hints->src_addr = NULL;
+//                fi_freeinfo(hints);
+                // free(socket_data);
+            }
             return ep;
         }
 
@@ -597,7 +659,7 @@ struct context_info {
         struct fid_ep *get_tx_endpoint()
         {
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
-#ifdef SEPARATE_RX_TX_ENDPOINTS
+#ifdef GHEX_SEPARATE_RX_TX_ENDPOINTS
 #ifdef GHEX_LIBFABRIC_THREAD_LOCAL_ENDPOINTS
             if (ep_tx_ == nullptr) {
                 ep_tx_ = new_endpoint_active(fabric_domain_, fabric_info_);
@@ -822,6 +884,13 @@ struct context_info {
                         context_info* handler = reinterpret_cast<context_info*>(entry[i].op_context);
                         processed.user_msgs += handler->handle_send_completion();
                     }
+                    else if (entry[i].flags == (FI_TAGGED | FI_SEND)) {
+                        GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Completion")
+                            , "txcq MSG tagged send completion"
+                            , hpx::debug::ptr(entry[i].op_context)));
+                        context_info* handler = reinterpret_cast<context_info*>(entry[i].op_context);
+                        processed.user_msgs += handler->handle_send_completion();
+                    }
                     else if (entry[i].flags == (FI_MSG | FI_SEND)) {
                         GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Completion")
                             , "txcq MSG send completion"
@@ -919,6 +988,13 @@ struct context_info {
                         context_info* handler = reinterpret_cast<context_info*>(entry[i].op_context);
                         processed.user_msgs += handler->handle_recv_completion(entry[i].len);
                     }
+                    else if (entry[i].flags == (FI_TAGGED | FI_RECV)) {
+                        GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Completion")
+                            , "rxcq MSG tagged recv completion"
+                            , hpx::debug::ptr(entry[i].op_context)));
+                        context_info* handler = reinterpret_cast<context_info*>(entry[i].op_context);
+                        processed.user_msgs += handler->handle_recv_completion(entry[i].len);
+                    }
                     else if (entry[i].flags == (FI_MSG | FI_RECV)) {
                         GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Completion")
                             , "rxcq MSG recv completion"
@@ -966,12 +1042,13 @@ struct context_info {
 
             struct fid_cq *cq;
             fi_cq_attr cq_attr = {};
-                cq_attr.format = FI_CQ_FORMAT_MSG;
-            cq_attr.wait_obj = FI_WAIT_NONE;
-            cq_attr.size     = size;
-            cq_attr.flags    = 0 /*FI_COMPLETION*/;
+            cq_attr.format    = FI_CQ_FORMAT_MSG;
+            cq_attr.wait_obj  = FI_WAIT_NONE;
+            cq_attr.wait_cond = FI_CQ_COND_NONE;
+            cq_attr.size      = size;
+            cq_attr.flags     = 0 /*FI_COMPLETION*/;
             // open completion queue on fabric domain and set context to null
-            int ret = fi_cq_open(domain, &cq_attr, &cq, &cq);
+            int ret = fi_cq_open(domain, &cq_attr, &cq, nullptr);
             if (ret) throw fabric_error(ret, "fi_cq_open");
             return cq;
         }

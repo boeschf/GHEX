@@ -233,9 +233,11 @@ namespace gridtools {
 
                     // generate a tag with 0xaaaaaaaarrrrtttt
                     inline std::uint64_t make_tag64(std::uint32_t tag, std::uint32_t rank) {
-                        return (((std::uint64_t(m_shared_state->m_ctag) & 0x00000000FFFFFFFF) << 32) |
-                                ((std::uint64_t(rank)                   & 0x0000000000000000) << 16) |
-                                ((std::uint64_t(tag)                    & 0x000000000000FFFF)));
+                        return (
+                                ((std::uint64_t(m_shared_state->m_ctag) & 0x00000000FFFFFFFF) << 32) |
+//                                ((std::uint64_t(rank)                   & 0x000000000000FFFF) << 16) |
+                                ((std::uint64_t(tag)                    & 0x00000000FFFFFFFF))
+                               );
                     }
 
                     inline rma::memory_pool<region_provider> *get_memory_pool() {
