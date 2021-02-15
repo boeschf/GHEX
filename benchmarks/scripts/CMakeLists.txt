@@ -18,7 +18,7 @@
 
 ghex_option(GHEX_BENCHMARK_SCRIPTS_PATH PATH
   "Directory to place batch scripts in"
-  "${CMAKE_BINARY_DIR}/scripts"
+  "${PROJECT_BINARY_DIR}/scripts"
   ADVANCED)
 
 # Make sure scripts dir exists
@@ -44,7 +44,7 @@ foreach(script ${SCRIPTS})
   ADD_CUSTOM_COMMAND(
     DEPENDS   "${CMAKE_CURRENT_SOURCE_DIR}/${script}.sh.in"
     COMMAND   "${CMAKE_COMMAND}"
-    ARGS      -DBIN_DIR="${CMAKE_BINARY_DIR}/benchmarks/transport"
+    ARGS      -DBIN_DIR="${PROJECT_BINARY_DIR}/benchmarks/transport"
               -DMPIEXEC="${MPIEXEC}"
               -DSCRIPT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
               -DSCRIPT_NAME=${script}

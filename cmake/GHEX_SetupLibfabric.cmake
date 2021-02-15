@@ -178,6 +178,6 @@ ghex_add_config_define_namespace(
 #------------------------------------------------------------------------------
 write_config_defines_file(
     NAMESPACE libfabric
-    FILENAME  "${CMAKE_BINARY_DIR}/ghex_libfabric_defines.hpp"
+    FILENAME  "${PROJECT_BINARY_DIR}/ghex_libfabric_defines.hpp"
 )
-target_include_directories(libfabric::libfabric INTERFACE "${CMAKE_BINARY_DIR}")
+target_include_directories(libfabric::libfabric INTERFACE "${PROJECT_BINARY_DIR}")
