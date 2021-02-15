@@ -227,16 +227,16 @@ namespace gridtools {
                     rank_type size() const noexcept { return m_shared_state->m_size; }
                     address_type address() const noexcept { return m_shared_state->m_rank; }
 
-                    bool is_local(rank_type r) const noexcept { return m_shared_state->m_rank_topology.is_local(r); }
-                    rank_type local_rank() const noexcept { return m_shared_state->m_rank_topology.local_rank(); }
-                    auto mpi_comm() const noexcept { return m_shared_state->m_rank_topology.mpi_comm(); }
+                    inline bool is_local(rank_type r) const noexcept { return m_shared_state->m_rank_topology.is_local(r); }
+                    inline rank_type local_rank() const noexcept { return m_shared_state->m_rank_topology.local_rank(); }
+                    inline auto mpi_comm() const noexcept { return m_shared_state->m_rank_topology.mpi_comm(); }
 
-                    // generate a tag with 0xaaaaaaaarrrrtttt
+                    // generate a tag with 0xaaaaaaRRRRTTTTTT address, rank, tag info
                     inline std::uint64_t make_tag64(std::uint32_t tag, std::uint32_t rank) {
                         return (
-                                ((std::uint64_t(m_shared_state->m_ctag) & 0x00000000FFFFFFFF) << 32) |
-//                                ((std::uint64_t(rank)                   & 0x000000000000FFFF) << 16) |
-                                ((std::uint64_t(tag)                    & 0x00000000FFFFFFFF))
+                                ((std::uint64_t(m_shared_state->m_ctag) & 0x0000000000FFFFFF) << 40) |
+                                ((std::uint64_t(rank)                   & 0x000000000000FFFF) << 24) |
+                                ((std::uint64_t(tag)                    & 0x0000000000FFFFFF))
                                );
                     }
 
@@ -306,7 +306,7 @@ namespace gridtools {
                                 recv_region->get_address(),
                                 recv_region->get_size(),
                                 recv_region->get_local_key(),
-                                src_addr_, tag_, ignore, ctxt);
+                                FI_ADDR_UNSPEC, tag_, ignore, ctxt);
                             if (ret ==0) {
                                 ok = true;
                             }
@@ -334,7 +334,7 @@ namespace gridtools {
                     {
                         [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(future)");
 
-                        std::uint64_t stag = make_tag64(tag, dst);
+                        std::uint64_t stag = make_tag64(tag, this->local_rank());
 
                         // get main libfabric controller
                         auto controller = m_shared_state->m_controller;
@@ -397,7 +397,7 @@ namespace gridtools {
                     {
                         [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(callback)");
 
-                        std::uint64_t stag = make_tag64(tag, dst);
+                        std::uint64_t stag = make_tag64(tag, this->local_rank());
 
                         // get main libfabric controller
                         auto controller = m_shared_state->m_controller;

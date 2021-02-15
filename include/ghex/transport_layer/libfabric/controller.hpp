@@ -77,7 +77,7 @@
 // ------------------------------------------------
 #define GHEX_LIBFABRIC_ENDPOINT_RDM
 // #define GHEX_LIBFABRIC_THREAD_LOCAL_ENDPOINTS
-//#define GHEX_SEPARATE_RX_TX_ENDPOINTS
+#define GHEX_SEPARATE_RX_TX_ENDPOINTS
 
 // ------------------------------------------------
 // Needed on Cray for GNI extensions
@@ -453,7 +453,7 @@ struct context_info {
 //            }
 #endif
 
-            fabric_hints_->caps = FI_MSG | FI_TAGGED | FI_DIRECTED_RECV /*| FI_SOURCE*/;
+            fabric_hints_->caps = FI_MSG | FI_TAGGED /*| FI_DIRECTED_RECV*/ /*| FI_SOURCE*/;
 
             fabric_hints_->mode                   = FI_CONTEXT /*| FI_MR_LOCAL*/;
             if (provider.c_str()==std::string("tcp")) {
