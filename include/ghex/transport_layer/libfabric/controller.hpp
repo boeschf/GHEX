@@ -95,7 +95,7 @@
 
 namespace gridtools { namespace ghex {
     // cppcheck-suppress ConfigurationNotChecked
-    static hpx::debug::enable_print<true> cnt_deb("CONTROL");
+    static hpx::debug::enable_print<false> cnt_deb("CONTROL");
 }}
 
 namespace gridtools {

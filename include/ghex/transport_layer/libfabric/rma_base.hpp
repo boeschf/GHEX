@@ -20,7 +20,7 @@
 
 namespace gridtools { namespace ghex {
     // cppcheck-suppress ConfigurationNotChecked
-    static hpx::debug::enable_print<true> any_deb("ANY_MSG");
+    static hpx::debug::enable_print<false> any_deb("ANY_MSG");
 }}
 
 namespace gridtools {

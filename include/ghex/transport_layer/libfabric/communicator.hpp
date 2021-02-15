@@ -22,7 +22,7 @@ namespace gridtools {
     namespace ghex {
 
         // cppcheck-suppress ConfigurationNotChecked
-        static hpx::debug::enable_print<true> com_deb("COMMUNI");
+        static hpx::debug::enable_print<false> com_deb("COMMUNI");
 
         namespace tl {
             namespace libfabric {
@@ -231,7 +231,7 @@ namespace gridtools {
                     inline rank_type local_rank() const noexcept { return m_shared_state->m_rank_topology.local_rank(); }
                     inline auto mpi_comm() const noexcept { return m_shared_state->m_rank_topology.mpi_comm(); }
 
-                    // generate a tag with 0xaaaaaaRRRRTTTTTT address, rank, tag info
+                    // generate a tag with 0xaaaaaaRRRRtttttt address, rank, tag info
                     inline std::uint64_t make_tag64(std::uint32_t tag, std::uint32_t rank) {
                         return (
                                 ((std::uint64_t(m_shared_state->m_ctag) & 0x0000000000FFFFFF) << 40) |
@@ -334,7 +334,7 @@ namespace gridtools {
                     {
                         [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(future)");
 
-                        std::uint64_t stag = make_tag64(tag, this->local_rank());
+                        std::uint64_t stag = make_tag64(tag, this->rank());
 
                         // get main libfabric controller
                         auto controller = m_shared_state->m_controller;
@@ -397,7 +397,7 @@ namespace gridtools {
                     {
                         [[maybe_unused]] auto scp = com_deb.scope(this, __func__, "(callback)");
 
-                        std::uint64_t stag = make_tag64(tag, this->local_rank());
+                        std::uint64_t stag = make_tag64(tag, this->rank());
 
                         // get main libfabric controller
                         auto controller = m_shared_state->m_controller;

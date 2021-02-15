@@ -20,7 +20,7 @@ namespace gridtools {
         namespace tl {
             namespace libfabric {
             // cppcheck-suppress ConfigurationNotChecked
-            static hpx::debug::enable_print<true> ctx_deb("CONTEXT");
+            static hpx::debug::enable_print<false> ctx_deb("CONTEXT");
 
             using controller_type = ghex::tl::libfabric::controller;
 

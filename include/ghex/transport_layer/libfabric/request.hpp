@@ -17,7 +17,7 @@
 #include <ghex/transport_layer/libfabric/controller.hpp>
 
 // cppcheck-suppress ConfigurationNotChecked
-static hpx::debug::enable_print<true> req_deb("REQUEST");
+static hpx::debug::enable_print<false> req_deb("REQUEST");
 
 namespace gridtools{ namespace ghex { namespace tl { namespace libfabric {
 
