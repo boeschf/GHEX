@@ -12,6 +12,7 @@
 #define INCLUDED_GHEX_STRUCTURED_PATTERN_HPP
 
 #include <map>
+#include <chrono>
 #include <iosfwd>
 #include "./grid.hpp"
 #include "../pattern.hpp"
@@ -219,6 +220,7 @@ namespace gridtools {
                 using iteration_space_pair      = typename pattern_type::iteration_space_pair;
                 using coordinate_type           = typename pattern_type::coordinate_type;
                 using extended_domain_id_type   = typename pattern_type::extended_domain_id_type;
+                using clock_type = std::chrono::high_resolution_clock;
 
                 // get this address from new communicator
                 auto comm = tl::mpi::setup_communicator(context.mpi_comm());
@@ -265,9 +267,19 @@ namespace gridtools {
 
                 // find all domains and their extents by all_gather operations
                 int my_num_domains   = my_domain_ids.size();
+                const auto tp_0 = clock_type::now();
                 auto num_domain_ids  = comm.all_gather(my_num_domains).get();
+                const auto tp_1 = clock_type::now();
                 auto domain_ids      = comm.all_gather(my_domain_ids, num_domain_ids).get();
+                const auto tp_2 = clock_type::now();
                 auto domain_extents  = comm.all_gather(my_domain_extents, num_domain_ids).get();
+                const auto tp_3 = clock_type::now();
+                if (comm.rank() == 0)
+                {
+                    std::cout << "all gather num domains:    " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_1 - tp_0).count()*1.0e-9) << " s" << std::endl;
+                    std::cout << "all gather domain ids:     " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_2 - tp_1).count()*1.0e-9) << " s" << std::endl;
+                    std::cout << "all gather domain extents: " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_3 - tp_2).count()*1.0e-9) << " s" << std::endl;
+                }
                 const int world_size = num_domain_ids.size();
 
                 // find global extents
@@ -362,7 +374,13 @@ namespace gridtools {
 
                 // communicate max tag to be used for thread safety in communication object
                 // use all_gather
+                const auto tp_4 = clock_type::now();
                 auto max_tags  = comm.all_gather(m_max_tag).get();
+                const auto tp_5 = clock_type::now();
+                if (comm.rank() == 0)
+                {
+                    std::cout << "all gather tags:           " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_5 - tp_4).count()*1.0e-9) << " s" << std::endl;
+                }
                 // compute maximum tag and store in m_max_tag
                 for (auto x : max_tags)
                     m_max_tag = std::max(x,m_max_tag);
@@ -436,6 +454,7 @@ namespace gridtools {
                     send_halos_map.erase(it);
                 }
 
+                const auto tp_6 = clock_type::now();
                 // loop over all ranks and establish connection
                 for (int rank = 0; rank<world_size; ++rank)
                 {
@@ -571,6 +590,11 @@ namespace gridtools {
                             }
                         }
                     }
+                }
+                const auto tp_7 = clock_type::now();
+                if (comm.rank() == 0)
+                {
+                    std::cout << "establish connections:     " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_7 - tp_6).count()*1.0e-9) << " s" << std::endl;
                 }
 
                 return pattern_container<communicator_type,grid_type,domain_id_type>(std::move(my_patterns), m_max_tag);
