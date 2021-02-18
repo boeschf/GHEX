@@ -13,6 +13,7 @@
 
 #include <map>
 #include <chrono>
+#include <iostream>
 #include <iosfwd>
 #include "./grid.hpp"
 #include "../pattern.hpp"
