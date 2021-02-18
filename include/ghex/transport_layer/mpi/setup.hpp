@@ -128,6 +128,39 @@ namespace gridtools{
                 }
 
                 template<typename T>
+                std::vector<std::vector<T>> all_gather_b(const std::vector<T>& payload, const std::vector<int>& sizes) const
+                {
+                    std::vector<T> recvbuf;
+                    std::vector<int> recvcounts(size());
+                    std::vector<int> displs(size());
+                    std::vector<std::vector<T>> res(size());
+                    unsigned int c = 0;
+                    for (int i=0; i<size(); ++i)
+                    {
+                        recvcounts[i] = sizes[i]*sizeof(T);
+                        displs[i] = c*sizeof(T);
+                        res[i].resize(sizes[i]);
+                        c += sizes[i];
+                    }
+                    recvbuf.resize(c);
+
+                    GHEX_CHECK_MPI_RESULT( MPI_Allgatherv(
+                        &payload[0], payload.size()*sizeof(T), MPI_BYTE,
+                        &recvbuf[0], &recvcounts[0], &displs[0], MPI_BYTE,
+                        *this));
+
+                    c = 0;
+                    for (int i=0; i<size(); ++i)
+                    {
+                        std::copy(
+                            &recvbuf[displs[i]/sizeof(T)],
+                            &recvbuf[displs[i]/sizeof(T)] + sizes[i],
+                            res[i].begin());
+                    }
+                    return res;
+                }
+
+                template<typename T>
                 future< std::vector<T> > all_gather(const T& payload) const
                 {
                     std::vector<T> res(size());

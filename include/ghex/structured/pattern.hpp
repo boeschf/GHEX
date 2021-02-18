@@ -271,9 +271,9 @@ namespace gridtools {
                 const auto tp_0 = clock_type::now();
                 auto num_domain_ids  = comm.all_gather_b(my_num_domains);
                 const auto tp_1 = clock_type::now();
-                auto domain_ids      = comm.all_gather(my_domain_ids, num_domain_ids).get();
+                auto domain_ids      = comm.all_gather_b(my_domain_ids, num_domain_ids);
                 const auto tp_2 = clock_type::now();
-                auto domain_extents  = comm.all_gather(my_domain_extents, num_domain_ids).get();
+                auto domain_extents  = comm.all_gather_b(my_domain_extents, num_domain_ids);
                 const auto tp_3 = clock_type::now();
                 if (comm.rank() == 0)
                 {
@@ -376,7 +376,7 @@ namespace gridtools {
                 // communicate max tag to be used for thread safety in communication object
                 // use all_gather
                 const auto tp_4 = clock_type::now();
-                auto max_tags  = comm.all_gather(m_max_tag).get();
+                auto max_tags  = comm.all_gather_b(m_max_tag);
                 const auto tp_5 = clock_type::now();
                 if (comm.rank() == 0)
                 {
