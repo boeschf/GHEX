@@ -268,7 +268,7 @@ namespace gridtools {
                 // find all domains and their extents by all_gather operations
                 int my_num_domains   = my_domain_ids.size();
                 const auto tp_0 = clock_type::now();
-                auto num_domain_ids  = comm.all_gather(my_num_domains).get();
+                auto num_domain_ids  = comm.all_gather_b(my_num_domains);
                 const auto tp_1 = clock_type::now();
                 auto domain_ids      = comm.all_gather(my_domain_ids, num_domain_ids).get();
                 const auto tp_2 = clock_type::now();

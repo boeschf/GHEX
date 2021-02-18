@@ -140,6 +140,17 @@ namespace gridtools{
                         &h.get()));
                     return {std::move(res), std::move(h)};
                 }
+
+                template<typename T>
+                std::vector<T> all_gather_b(const T& payload) const
+                {
+                    std::vector<T> res(size());
+                    GHEX_CHECK_MPI_RESULT(
+                        MPI_Allgather(
+                            &payload, sizeof(T), MPI_BYTE,
+                            &res[0], sizeof(T), MPI_BYTE,*this));
+                    return res;
+                }
                 
                 /** @brief computes the max element of a vector<T> among all ranks */
                 template<typename T>
