@@ -111,7 +111,7 @@ namespace rma
             std::lock_guard<std::mutex> lock(m_init_mutex);
             static std::shared_ptr<memory_pool> instance(nullptr);
             if (!instance.get()) {
-                std::cout << "Initializing new mempool" << std::endl;
+                GHEX_DP_ONLY(pool_deb, debug(hpx::debug::str<>("New mempool")));
                 instance.reset(new memory_pool(pd));
             }
             return instance;

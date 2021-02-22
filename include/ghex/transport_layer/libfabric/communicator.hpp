@@ -22,7 +22,7 @@ namespace gridtools {
     namespace ghex {
 
         // cppcheck-suppress ConfigurationNotChecked
-        static hpx::debug::enable_print<false> com_deb("COMMUNI");
+        static hpx::debug::enable_print<true> com_deb("COMMUNI");
 
         namespace tl {
             namespace libfabric {

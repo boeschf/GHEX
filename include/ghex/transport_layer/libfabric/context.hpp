@@ -37,7 +37,7 @@ namespace gridtools {
                 std::lock_guard<std::mutex> lock(m_init_mutex);
                 static std::shared_ptr<controller_type> instance(nullptr);
                 if (!instance.get()) {
-                    std::cout << "Initializing new controller" << std::endl;
+                    GHEX_DP_ONLY(ctx_deb, debug(hpx::debug::str<>("New Controller")));
                     instance.reset(new controller_type(
                             GHEX_LIBFABRIC_PROVIDER,
                             GHEX_LIBFABRIC_DOMAIN,

@@ -71,13 +71,29 @@
 #include <ghex/transport_layer/libfabric/unique_function.hpp>
 //
 #include <mpi.h>
+// ----------------------------------------
+// Enable/Disable libfabric progress thread
+#define LIBFABRIC_PROGRESS \
+    (std::getenv("LIBFABRIC_AUTO_PROGRESS") ? FI_PROGRESS_AUTO : FI_PROGRESS_MANUAL)
 
-// ------------------------------------------------
-// Reliable Data Endpoint type
-// ------------------------------------------------
-#define GHEX_LIBFABRIC_ENDPOINT_RDM
-// #define GHEX_LIBFABRIC_THREAD_LOCAL_ENDPOINTS
-#define GHEX_SEPARATE_RX_TX_ENDPOINTS
+#define LIBFABRIC_PROGRESS_STRING \
+    (std::getenv("LIBFABRIC_AUTO_PROGRESS") ? "AUTO" : "MANUAL")
+
+// ----------------------------------------
+// Enable/Disable shared endpoint or separate for send/recv
+#define LIBFABRIC_ENDPOINT_MULTI \
+    (std::getenv("LIBFABRIC_ENDPOINT_MULTI") ? true : false)
+
+#define LIBFABRIC_ENDPOINT_MULTI_STRING \
+    (std::getenv("LIBFABRIC_ENDPOINT_MULTI") ? "MULTIPLE" : "SINGLE")
+
+// ----------------------------------------
+// Enable/Disable thread local endpoint send (and separate send/recv)
+#define LIBFABRIC_ENDPOINT_THREADLOCAL \
+    (std::getenv("LIBFABRIC_ENDPOINT_THREADLOCAL") ? true : false)
+
+#define LIBFABRIC_ENDPOINT_THREADLOCAL_STRING \
+    (std::getenv("LIBFABRIC_ENDPOINT_THREADLOCAL") ? "THREADLOCAL" : "NO_THREADLOCAL")
 
 // ------------------------------------------------
 // Needed on Cray for GNI extensions
@@ -154,17 +170,6 @@ struct context_info {
         }
 };
 
-    // when using thread local endpoints, we encapsulate things that
-    // can be created/destroyed by the wrapper destructor
-    struct endpoint_wrapper {
-        std::unique_ptr<fid_ep> endpoint_;
-        std::unique_ptr<fid_cq> cq_;
-        //
-        ~endpoint_wrapper() {
-            fi_close(&endpoint_->fid);
-        }
-    };
-
     //    template<typename Tag, typename ThreadPrimitives>
     //    struct transport_context;
 
@@ -186,6 +191,24 @@ struct context_info {
         }
     };
 
+    // when using thread local endpoints, we encapsulate things that
+    // can be created/destroyed by the wrapper destructor
+    struct endpoint_wrapper {
+        std::unique_ptr<fid_ep> endpoint_;
+        std::unique_ptr<fid_cq> cq_;
+        //
+        endpoint_wrapper(fid_ep *ep, fid_cq *cq) {
+            endpoint_.reset(ep);
+            cq_.reset(cq);
+        }
+        ~endpoint_wrapper() {
+            fi_close(&endpoint_->fid);
+            fi_close(&cq_->fid);
+            endpoint_ = nullptr;
+            cq_ = nullptr;
+        }
+    };
+
     class controller
     {
     public:
@@ -193,12 +216,9 @@ struct context_info {
         typedef std::lock_guard<mutex_type>  scoped_lock;
 
     private:
-#ifdef GHEX_LIBFABRIC_THREAD_LOCAL_ENDPOINTS
-        //
-        thread_local endpoint_wrapper ep_local__;
-#else
+        // inline static requires c++17
+        inline static thread_local std::unique_ptr<endpoint_wrapper> ep_local_;
         struct fid_ep     *ep_tx_;
-#endif
         struct fid_ep     *ep_rx_;
 
         struct fi_info    *fabric_info_;
@@ -206,10 +226,10 @@ struct context_info {
         struct fid_domain *fabric_domain_;
         struct fid_pep    *ep_passive_;
 
-        // we will use just one event queue for all connections
-        struct fid_eq     *event_queue_;
         struct fid_cq     *txcq_, *rxcq_;
         struct fid_av     *av_;
+        bool               separate_endpoints_;
+        bool               threadlocal_endpoints_;
 
         std::atomic<std::uint32_t> bootstrap_counter_;
 
@@ -243,14 +263,20 @@ struct context_info {
           , fabric_(nullptr)
           , fabric_domain_(nullptr)
           , ep_passive_(nullptr)
-          , event_queue_(nullptr)
-            //
           , txcq_(nullptr)
           , rxcq_(nullptr)
           , av_(nullptr)
+          , separate_endpoints_(false)
+          , threadlocal_endpoints_(false)
         {
             GHEX_DP_ONLY(cnt_deb, eval([](){ std::cout.setf(std::ios::unitbuf); }));
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
+
+            threadlocal_endpoints_ = LIBFABRIC_ENDPOINT_THREADLOCAL;
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Endpoints"), LIBFABRIC_ENDPOINT_THREADLOCAL_STRING));
+
+            separate_endpoints_ = threadlocal_endpoints_ || LIBFABRIC_ENDPOINT_MULTI;
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("Endpoints"), LIBFABRIC_ENDPOINT_MULTI_STRING));
 
             open_fabric(provider, domain, rank);
 
@@ -280,20 +306,26 @@ struct context_info {
             // bind CQ to endpoint
             bind_queue_to_endpoint(ep_rx_, rxcq_, FI_RECV);
 
+            // if using threadlocal endpoints, defer creation until thread requests it
+            if (!threadlocal_endpoints_) {
             // create a completion queue for tx
             fabric_info_->tx_attr->op_flags |= FI_COMPLETION;
             txcq_ = create_completion_queue(fabric_domain_, fabric_info_->tx_attr->size);
 
-#ifdef GHEX_SEPARATE_RX_TX_ENDPOINTS
+                // create a single endpoint for sending
+                if (separate_endpoints_) {
             // setup an endpoint for sending messages
             // this endpoint will be thread local in future
             ep_tx_ = new_endpoint_active(fabric_domain_, fabric_info_, nullptr, rank);
             bind_queue_to_endpoint(ep_tx_, txcq_, FI_TRANSMIT | FI_RECV);
             bind_address_vector_to_endpoint(ep_tx_, av_);
             enable_endpoint(ep_tx_);
-#else
+                }
+                // shared send/recv enspoint - just bind the send queue to the recv endpoint
+                else {
             bind_queue_to_endpoint(ep_rx_, txcq_, FI_TRANSMIT);
-# endif
+                }
+            }
             // once enabled we can get the address
             enable_endpoint(ep_rx_);
             here_ = get_endpoint_address(&ep_rx_->fid);
@@ -322,18 +354,20 @@ struct context_info {
             if (fabric_)
                 fi_close(&fabric_->fid);
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("closing"), "ep_active"));
+            // Rx
+            if (rxcq_)
+                fi_close(&rxcq_->fid);
             if (ep_rx_)
                 fi_close(&ep_rx_->fid);
-#ifndef GHEX_LIBFABRIC_THREAD_LOCAL_ENDPOINTS
+            // Tx
+            if (txcq_)
+                fi_close(&txcq_->fid);
             if (ep_tx_)
                 fi_close(&ep_tx_->fid);
-#endif
+            // unused
             if (ep_passive_)
                 fi_close(&ep_passive_->fid);
 
-            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("closing"), "event_queue"));
-            if (event_queue_)
-                fi_close(&event_queue_->fid);
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("closing"), "fabric_domain"));
             if (fabric_domain_)
                 fi_close(&fabric_domain_->fid);
@@ -478,10 +512,11 @@ struct context_info {
 //            fabric_hints_->domain_attr->mr_mode = FI_MR_SCALABLE;
 #endif
             // Disable the use of progress threads
-//            fabric_hints_->domain_attr->control_progress = FI_PROGRESS_MANUAL;
-//            fabric_hints_->domain_attr->data_progress = FI_PROGRESS_MANUAL;
-            fabric_hints_->domain_attr->control_progress = FI_PROGRESS_AUTO;
-            fabric_hints_->domain_attr->data_progress = FI_PROGRESS_AUTO;
+            auto progress = LIBFABRIC_PROGRESS;
+            fabric_hints_->domain_attr->control_progress = progress;
+            fabric_hints_->domain_attr->data_progress = progress;
+            GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("progress")
+                          , LIBFABRIC_PROGRESS_STRING));
 
             // Enable thread safe mode (Does not work with psm2 provider)
             fabric_hints_->domain_attr->threading = FI_THREAD_SAFE;
@@ -659,19 +694,27 @@ struct context_info {
         struct fid_ep *get_tx_endpoint()
         {
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
-#ifdef GHEX_SEPARATE_RX_TX_ENDPOINTS
-#ifdef GHEX_LIBFABRIC_THREAD_LOCAL_ENDPOINTS
-            if (ep_tx_ == nullptr) {
-                ep_tx_ = new_endpoint_active(fabric_domain_, fabric_info_);
-                bind_queue_to_endpoint(ep_tx_, txcq_, FI_SEND);
+            if (threadlocal_endpoints_) {
+                throw std::runtime_error("Not yet available");
+                if (ep_local_ == nullptr) {
+                    // create tx endpoint for thread
+                    auto ep_tx = new_endpoint_active(fabric_domain_, fabric_info_, nullptr, -1);
+                    // create a completion queue for tx
+                    fabric_info_->tx_attr->op_flags |= FI_COMPLETION;
+                    auto txcq = create_completion_queue(fabric_domain_, fabric_info_->tx_attr->size);
+                    bind_queue_to_endpoint(ep_tx, txcq, FI_TRANSMIT | FI_RECV);
+                    bind_address_vector_to_endpoint(ep_tx, av_);
+                    enable_endpoint(ep_tx);
+                    ep_local_ = std::make_unique<endpoint_wrapper>(ep_tx, txcq);
             }
-#else
-            assert (ep_tx_ != nullptr);
-#endif
+                return ep_local_->endpoint_.get();
+            }
+            else if (separate_endpoints_) {
+                [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__, "separate_endpoints_");
             return ep_tx_;
-#else
+            }
+            // shared tx/rx endpoint
             return ep_rx_;
-#endif
         }
 
         // --------------------------------------------------------------------
