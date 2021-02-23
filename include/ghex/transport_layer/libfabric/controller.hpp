@@ -127,31 +127,63 @@ using any_msg_type       = gridtools::ghex::tl::libfabric::any_libfabric_message
 
 class controller;
 
-// This struct holds the ready state of a future
-// we must also store the context used in libfabric, in case
-// a request is cancelled - fi_cancel(...) needs it
-struct context_info {
-    // libfabric requires some space for it's internal bookkeeping
-        // so the first member of this struct must be fi_context
-    fi_context                      context_reserved_space;
-    bool                            m_ready;
-    fid_ep                         *endpoint_;
-    region_type                    *message_region_;
-    libfabric_region_holder         message_holder_;
-    unique_function<void(void)>     user_cb_;
-        using tag_type = std::uint64_t;
-        tag_type                        tag_;
-        bool                            is_send_;
+    // when using thread local endpoints, we encapsulate things that
+    // can be created/destroyed by the wrapper destructor
+    struct endpoint_wrapper {
+      private:
+        fid_ep *ep_;
+        fid_cq *rq_;
+        fid_cq *tq_;
 
-    void init_message_data(const libfabric_msg_type &msg, uint64_t tag);
-    void init_message_data(const any_libfabric_message &msg, uint64_t tag);
-    template <typename Message,
-              typename Enable = typename std::enable_if<
-                  !std::is_same<libfabric_msg_type, Message>::value &&
-                  !std::is_same<any_libfabric_message, Message>::value>::type>
-    void init_message_data(Message &msg, uint64_t tag);
-    int handle_send_completion();
-    int handle_recv_completion(std::uint64_t /*len*/);
+      public:
+        endpoint_wrapper(fid_ep *ep, fid_cq *rq, fid_cq *tq) {
+            ep_ = ep;
+            rq_ = rq;
+            tq_ = tq;
+        }
+
+        ~endpoint_wrapper() {
+            if (ep_)
+                fi_close(&ep_->fid);
+            if (rq_)
+                fi_close(&rq_->fid);
+            if (tq_)
+                fi_close(&tq_->fid);
+            ep_ = nullptr;
+            rq_ = nullptr;
+            tq_ = nullptr;
+        }
+
+        inline fid_ep *get_ep()    { return ep_; }
+        inline fid_cq *get_rx_cq() { return rq_; }
+        inline fid_cq *get_tx_cq() { return (tq_ != nullptr ? tq_ : rq_); }
+    };
+
+    // This struct holds the ready state of a future
+    // we must also store the context used in libfabric, in case
+    // a request is cancelled - fi_cancel(...) needs it
+    struct context_info {
+        // libfabric requires some space for it's internal bookkeeping
+        // so the first member of this struct must be fi_context
+        fi_context                      context_reserved_space;
+        bool                            m_ready;
+        endpoint_wrapper               *endpoint_;
+        region_type                    *message_region_;
+        libfabric_region_holder         message_holder_;
+        unique_function<void(void)>     user_cb_;
+            using tag_type = std::uint64_t;
+            tag_type                        tag_;
+            bool                            is_send_;
+
+        void init_message_data(const libfabric_msg_type &msg, uint64_t tag);
+        void init_message_data(const any_libfabric_message &msg, uint64_t tag);
+        template <typename Message,
+                  typename Enable = typename std::enable_if<
+                      !std::is_same<libfabric_msg_type, Message>::value &&
+                      !std::is_same<any_libfabric_message, Message>::value>::type>
+        void init_message_data(Message &msg, uint64_t tag);
+        int handle_send_completion();
+        int handle_recv_completion(std::uint64_t /*len*/);
         //
         inline void set_ready() {
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("set_ready")
@@ -163,12 +195,12 @@ struct context_info {
             m_ready = true;
         }
         //
-    bool cancel();
+        bool cancel();
         //
         void handle_error(struct fi_cq_err_entry /*e*/) {
             std::terminate();
         }
-};
+    };
 
     //    template<typename Tag, typename ThreadPrimitives>
     //    struct transport_context;
@@ -191,24 +223,6 @@ struct context_info {
         }
     };
 
-    // when using thread local endpoints, we encapsulate things that
-    // can be created/destroyed by the wrapper destructor
-    struct endpoint_wrapper {
-        std::unique_ptr<fid_ep> endpoint_;
-        std::unique_ptr<fid_cq> cq_;
-        //
-        endpoint_wrapper(fid_ep *ep, fid_cq *cq) {
-            endpoint_.reset(ep);
-            cq_.reset(cq);
-        }
-        ~endpoint_wrapper() {
-            fi_close(&endpoint_->fid);
-            fi_close(&cq_->fid);
-            endpoint_ = nullptr;
-            cq_ = nullptr;
-        }
-    };
-
     class controller
     {
     public:
@@ -217,16 +231,17 @@ struct context_info {
 
     private:
         // inline static requires c++17
-        inline static thread_local std::unique_ptr<endpoint_wrapper> ep_local_;
-        struct fid_ep     *ep_tx_;
-        struct fid_ep     *ep_rx_;
+        inline static thread_local
+        std::unique_ptr<endpoint_wrapper> tl_tx_;
+
+        std::unique_ptr<endpoint_wrapper> ep_tx_;
+        std::unique_ptr<endpoint_wrapper> ep_rx_;
 
         struct fi_info    *fabric_info_;
         struct fid_fabric *fabric_;
         struct fid_domain *fabric_domain_;
         struct fid_pep    *ep_passive_;
 
-        struct fid_cq     *txcq_, *rxcq_;
         struct fid_av     *av_;
         bool               separate_endpoints_;
         bool               threadlocal_endpoints_;
@@ -263,8 +278,6 @@ struct context_info {
           , fabric_(nullptr)
           , fabric_domain_(nullptr)
           , ep_passive_(nullptr)
-          , txcq_(nullptr)
-          , rxcq_(nullptr)
           , av_(nullptr)
           , separate_endpoints_(false)
           , threadlocal_endpoints_(false)
@@ -291,44 +304,56 @@ struct context_info {
             // setup an endpoint for receiving messages
             // rx endpoint is shared by all threads
             here_ = locality("127.0.0.1", "7909");
-            ep_rx_ = new_endpoint_active(fabric_domain_, fabric_info_, here_.fabric_data(), rank);
+            auto ep_rx = new_endpoint_active(fabric_domain_, fabric_info_, here_.fabric_data(), rank);
 
             // create an address vector that will be bound to endpoints
             av_ = create_address_vector(fabric_info_, size);
 
             // bind address vector
-            bind_address_vector_to_endpoint(ep_rx_, av_);
+            bind_address_vector_to_endpoint(ep_rx, av_);
 
             // create a completion queue for the rx endpoint
             fabric_info_->rx_attr->op_flags |= FI_COMPLETION;
-            rxcq_ = create_completion_queue(fabric_domain_, fabric_info_->rx_attr->size);
+            auto rx_cq = create_completion_queue(fabric_domain_, fabric_info_->rx_attr->size);
 
             // bind CQ to endpoint
-            bind_queue_to_endpoint(ep_rx_, rxcq_, FI_RECV);
+            bind_queue_to_endpoint(ep_rx, rx_cq, FI_RECV);
+
+            if (threadlocal_endpoints_) {
+                ep_rx_ = std::make_unique<endpoint_wrapper>(ep_rx, rx_cq, nullptr);
+                // defer creation of Tx endpoint and CQ
+            }
+            else {
+                // create a completion queue for tx
+                fabric_info_->tx_attr->op_flags |= FI_COMPLETION;
+                auto tx_cq = create_completion_queue(fabric_domain_, fabric_info_->tx_attr->size);
+
+                // create an endpoint for sending
+                if (separate_endpoints_) {
+                    // setup an endpoint for sending messages
+                    // this endpoint will be thread local in future
+                    auto ep_tx = new_endpoint_active(fabric_domain_, fabric_info_, nullptr, rank);
+                    bind_queue_to_endpoint(ep_tx, tx_cq, FI_TRANSMIT | FI_RECV);
+                    bind_address_vector_to_endpoint(ep_tx, av_);
+                    enable_endpoint(ep_tx);
+                    // combine endpoints and CQ into wrapper for convenience
+                    ep_rx_ = std::make_unique<endpoint_wrapper>(ep_rx, rx_cq, nullptr);
+                    ep_tx_ = std::make_unique<endpoint_wrapper>(ep_tx, nullptr, tx_cq);
+                }
+                else {
+                    // shared send/recv endpoint - bind send cq to the recv endpoint
+                    bind_queue_to_endpoint(ep_rx, tx_cq, FI_TRANSMIT);
+                    // combine endpoint and CQs into wrapper for convenience
+                    ep_rx_ = std::make_unique<endpoint_wrapper>(ep_rx, rx_cq, tx_cq);
+                }
+            }
 
             // if using threadlocal endpoints, defer creation until thread requests it
             if (!threadlocal_endpoints_) {
-            // create a completion queue for tx
-            fabric_info_->tx_attr->op_flags |= FI_COMPLETION;
-            txcq_ = create_completion_queue(fabric_domain_, fabric_info_->tx_attr->size);
-
-                // create a single endpoint for sending
-                if (separate_endpoints_) {
-            // setup an endpoint for sending messages
-            // this endpoint will be thread local in future
-            ep_tx_ = new_endpoint_active(fabric_domain_, fabric_info_, nullptr, rank);
-            bind_queue_to_endpoint(ep_tx_, txcq_, FI_TRANSMIT | FI_RECV);
-            bind_address_vector_to_endpoint(ep_tx_, av_);
-            enable_endpoint(ep_tx_);
-                }
-                // shared send/recv enspoint - just bind the send queue to the recv endpoint
-                else {
-            bind_queue_to_endpoint(ep_rx_, txcq_, FI_TRANSMIT);
-                }
             }
             // once enabled we can get the address
-            enable_endpoint(ep_rx_);
-            here_ = get_endpoint_address(&ep_rx_->fid);
+            enable_endpoint(ep_rx_->get_ep());
+            here_ = get_endpoint_address(&ep_rx_->get_ep()->fid);
 
             // Broadcast address of all endpoints to all ranks
             // and fill address vector with info
@@ -354,19 +379,10 @@ struct context_info {
             if (fabric_)
                 fi_close(&fabric_->fid);
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("closing"), "ep_active"));
-            // Rx
-            if (rxcq_)
-                fi_close(&rxcq_->fid);
-            if (ep_rx_)
-                fi_close(&ep_rx_->fid);
-            // Tx
-            if (txcq_)
-                fi_close(&txcq_->fid);
-            if (ep_tx_)
-                fi_close(&ep_tx_->fid);
-            // unused
-            if (ep_passive_)
-                fi_close(&ep_passive_->fid);
+
+            // Cleanup endpoints
+            ep_rx_.reset(nullptr);
+            ep_tx_.reset(nullptr);
 
             GHEX_DP_ONLY(cnt_deb, debug(hpx::debug::str<>("closing"), "fabric_domain"));
             if (fabric_domain_)
@@ -683,20 +699,19 @@ struct context_info {
         }
 
         // --------------------------------------------------------------------
-        struct fid_ep *get_rx_endpoint()
+        endpoint_wrapper *get_rx_endpoint()
         {
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
 
-            return ep_rx_;
+            return ep_rx_.get();
         }
 
         // --------------------------------------------------------------------
-        struct fid_ep *get_tx_endpoint()
+        endpoint_wrapper *get_tx_endpoint()
         {
             [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__);
             if (threadlocal_endpoints_) {
-                throw std::runtime_error("Not yet available");
-                if (ep_local_ == nullptr) {
+                if (tl_tx_ == nullptr) {
                     // create tx endpoint for thread
                     auto ep_tx = new_endpoint_active(fabric_domain_, fabric_info_, nullptr, -1);
                     // create a completion queue for tx
@@ -705,16 +720,16 @@ struct context_info {
                     bind_queue_to_endpoint(ep_tx, txcq, FI_TRANSMIT | FI_RECV);
                     bind_address_vector_to_endpoint(ep_tx, av_);
                     enable_endpoint(ep_tx);
-                    ep_local_ = std::make_unique<endpoint_wrapper>(ep_tx, txcq);
-            }
-                return ep_local_->endpoint_.get();
+                    tl_tx_ = std::make_unique<endpoint_wrapper>(ep_tx, nullptr, txcq);
+                }
+                return tl_tx_.get();
             }
             else if (separate_endpoints_) {
                 [[maybe_unused]] auto scp = ghex::cnt_deb.scope(this, __func__, "separate_endpoints_");
-            return ep_tx_;
+                return ep_tx_.get();
             }
             // shared tx/rx endpoint
-            return ep_rx_;
+            return ep_rx_.get();
         }
 
         // --------------------------------------------------------------------
@@ -855,8 +870,8 @@ struct context_info {
             int sends = 0;
             int recvs = 0;
             while (retry) {
-                progress_count prog_s = poll_send_queue();
-                progress_count prog_r = poll_recv_queue();
+                progress_count prog_s = poll_send_queue(get_tx_endpoint()->get_tx_cq());
+                progress_count prog_r = poll_recv_queue(get_rx_endpoint()->get_rx_cq());
                 sends += prog_s.user_msgs;
                 recvs += prog_r.user_msgs;
                 // we always retry until no new completion events are
@@ -867,7 +882,7 @@ struct context_info {
         }
 
         // --------------------------------------------------------------------
-        progress_count poll_send_queue()
+        progress_count poll_send_queue(fid_cq *send_cq)
         {
             const int MAX_SEND_COMPLETIONS = 1;
             int ret;
@@ -886,12 +901,12 @@ struct context_info {
 
                 // poll for completions
                 {
-                    ret = fi_cq_read(txcq_, &entry[0], MAX_SEND_COMPLETIONS);
+                    ret = fi_cq_read(send_cq, &entry[0], MAX_SEND_COMPLETIONS);
                 }
                 // if there is an error, retrieve it
                 if (ret == -FI_EAVAIL) {
                     struct fi_cq_err_entry e = {};
-                    int err_sz = fi_cq_readerr(txcq_, &e ,0);
+                    int err_sz = fi_cq_readerr(send_cq, &e ,0);
                     HPX_UNUSED(err_sz);
 
                     // flags might not be set correctly
@@ -960,7 +975,7 @@ struct context_info {
         }
 
         // --------------------------------------------------------------------
-        progress_count poll_recv_queue()
+        progress_count poll_recv_queue(fid_cq *rx_cq)
         {
             const int MAX_RECV_COMPLETIONS = 1;
             int ret;
@@ -979,13 +994,13 @@ struct context_info {
 
                 // poll for completions
                 {
-                    ret = fi_cq_read(rxcq_, &entry[0], MAX_RECV_COMPLETIONS);
+                    ret = fi_cq_read(rx_cq, &entry[0], MAX_RECV_COMPLETIONS);
                 }
                 // if there is an error, retrieve it
                 if (ret == -FI_EAVAIL) {
                     // read the full error status
                     struct fi_cq_err_entry e = {};
-                    int err_sz = fi_cq_readerr(rxcq_, &e ,0);
+                    int err_sz = fi_cq_readerr(rx_cq, &e ,0);
                     HPX_UNUSED(err_sz);
                     // from the manpage 'man 3 fi_cq_readerr'
                     if (e.err==FI_ECANCELED) {
@@ -1006,7 +1021,7 @@ struct context_info {
                                       , "len"     , hpx::debug::hex<6>(e.len)
                                       , "context" , hpx::debug::ptr(e.op_context)
                                       , "error"   ,
-                        fi_cq_strerror(rxcq_, e.prov_errno, e.err_data, (char*)e.buf, e.len));
+                        fi_cq_strerror(rx_cq, e.prov_errno, e.err_data, (char*)e.buf, e.len));
                         std::terminate();
                     }
                     return progress_count{false, 0};

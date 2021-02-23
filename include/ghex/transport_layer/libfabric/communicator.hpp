@@ -22,7 +22,7 @@ namespace gridtools {
     namespace ghex {
 
         // cppcheck-suppress ConfigurationNotChecked
-        static hpx::debug::enable_print<true> com_deb("COMMUNI");
+        static hpx::debug::enable_print<false> com_deb("COMMUNI");
 
         namespace tl {
             namespace libfabric {
@@ -78,7 +78,7 @@ namespace gridtools {
 
                     const mpi::rank_topology& m_rank_topology;
                     controller_type          *m_controller;
-                    struct fid_ep            *m_rx_endpoint;
+                    endpoint_wrapper         *m_rx_endpoint;
                     std::uintptr_t            m_ctag;
                     rank_type                 m_rank;
                     rank_type                 m_size;
@@ -123,7 +123,7 @@ namespace gridtools {
                     using progress_status        = ghex::tl::cb::progress_status;
                     using controller_type        = ghex::tl::libfabric::controller;
 
-                    struct fid_ep *m_tx_endpoint = nullptr;
+                    endpoint_wrapper *m_tx_endpoint = nullptr;
                     //
                     int  m_progressed_sends = 0;
                     int  m_progressed_recvs = 0;
@@ -133,7 +133,7 @@ namespace gridtools {
                     communicator_state() = default;
                     communicator_state(communicator_state &&) = default;
 
-                    communicator_state(struct fid_ep *endpoint)
+                    communicator_state(endpoint_wrapper *endpoint)
                     {
                         m_tx_endpoint = endpoint;
                     }
@@ -261,7 +261,7 @@ namespace gridtools {
                         bool ok = false;
                         while (!ok) {
                             ssize_t ret;
-                            ret = fi_tsend(m_state->m_tx_endpoint,
+                            ret = fi_tsend(m_state->m_tx_endpoint->get_ep(),
                                            send_region->get_address(),
                                            send_region->get_message_length(),
                                            send_region->get_local_key(),
@@ -302,7 +302,7 @@ namespace gridtools {
                         bool ok = false;
                         while(!ok) {
                             uint64_t ignore = 0;
-                            ssize_t ret = fi_trecv(m_shared_state->m_rx_endpoint,
+                            ssize_t ret = fi_trecv(m_shared_state->m_rx_endpoint->get_ep(),
                                 recv_region->get_address(),
                                 recv_region->get_size(),
                                 recv_region->get_local_key(),

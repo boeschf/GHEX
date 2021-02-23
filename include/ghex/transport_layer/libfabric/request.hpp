@@ -79,7 +79,7 @@ namespace gridtools{ namespace ghex { namespace tl { namespace libfabric {
 
         bool context_info::cancel()
         {
-            bool ok = (fi_cancel(&this->endpoint_->fid, this) == 0);
+            bool ok = (fi_cancel(&this->endpoint_->get_ep()->fid, this) == 0);
             if (!ok) return ok;
 
             // cleanup as if we had completed, but without calling any
@@ -112,7 +112,12 @@ namespace gridtools{ namespace ghex { namespace tl { namespace libfabric {
                     return true;
                 }
                 if (!m_lf_ctxt->m_ready) {
-                    m_controller->poll_for_work_completions();
+                    if (m_lf_ctxt->is_send_) {
+                        m_controller->poll_send_queue(m_lf_ctxt->endpoint_->get_tx_cq());
+                    }
+                    else {
+                        m_controller->poll_recv_queue(m_lf_ctxt->endpoint_->get_rx_cq());
+                    }
                 }
                 return m_lf_ctxt->m_ready;
             }
