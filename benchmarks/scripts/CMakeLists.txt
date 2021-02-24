@@ -38,26 +38,33 @@ endif()
 #--------------------------------------------------
 # Slurm script generator for benchmarks
 #--------------------------------------------------
-set(SCRIPTS "slurm-tl-benchmarks")
+set(SCRIPTS "generate-ghex.py")
 
 foreach(script ${SCRIPTS})
   ADD_CUSTOM_COMMAND(
-    DEPENDS   "${CMAKE_CURRENT_SOURCE_DIR}/${script}.sh.in"
+    DEPENDS   "${CMAKE_CURRENT_SOURCE_DIR}/${script}"
     COMMAND   "${CMAKE_COMMAND}"
-    ARGS      -DBIN_DIR="${PROJECT_BINARY_DIR}/benchmarks/transport"
+    ARGS
+              # needed by the benchmark script
+              -DBIN_DIR=${PROJECT_BINARY_DIR}/benchmarks/transport
+              -DRUN_DIR=${GHEX_BENCHMARK_SCRIPTS_PATH}
               -DMPIEXEC="${MPIEXEC}"
+
+              # needed by the copy script
               -DSCRIPT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
               -DSCRIPT_NAME=${script}
               -DSCRIPT_DEST_DIR="${GHEX_BENCHMARK_SCRIPTS_PATH}"
+
               # quoted as it might be a list
               "-DBENCHMARK_SUFFIXES=${BENCHMARK_SUFFIXES}"
               -DJOB_OPTIONS1="${SLURM_JOB_OPTIONS1}"
               -P "${CMAKE_CURRENT_SOURCE_DIR}/copy_script.cmake"
-    OUTPUT    "${GHEX_BENCHMARK_SCRIPTS_PATH}/${script}.sh"
+
+    OUTPUT    "${GHEX_BENCHMARK_SCRIPTS_PATH}/${script}"
     VERBATIM
   )
 
   add_custom_target(script-${script}
-    DEPENDS "${GHEX_BENCHMARK_SCRIPTS_PATH}/${script}.sh"
+    DEPENDS "${GHEX_BENCHMARK_SCRIPTS_PATH}/${script}"
   )
 endforeach(script)
