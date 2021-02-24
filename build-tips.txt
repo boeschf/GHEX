@@ -1,0 +1,17 @@
+# -----------------------------------
+# daint
+# -----------------------------------
+cmake -DGHEX_USE_LIBFABRIC=ON -DLIBFABRIC_ROOT=/apps/daint/UES/biddisco/gcc/8.3.0/libfabric/ -DGHEX_BUILD_BENCHMARKS=ON -DGHEX_BUILD_TESTS=ON -DBOOST_ROOT=$BOOST_ROOT -DMPIEXEC_EXECUTABLE=/usr/bin/srun -DMPIEXEC_PREFLAGS="-A csstaff" /apps/daint/UES/biddisco/src/ghex/
+
+#
+# cray libfabric build, enable gni
+# disable kdreg memory registration module if using MPI in the same application as libfabric
+#
+./configure --disable-debug --with-kdreg=no --enable-gni --disable-verbs --disable-sockets --disable-usnic --disable-udp --disable-rxm --disable-rxd --disable-shm --disable-mrail --disable-tcp --disable-hook_debug --disable-perf --disable-rstream --disable-efa --prefix=$INSTALL_ROOT/libfabric --no-recursion
+
+#
+# laptop libfabric build, enable tcp, sockets, rxm
+#
+/home/biddisco/src/libfabric/configure --disable-debug --enable-sockets --enable-tcp --enable-rxm --prefix=/home/biddisco/apps/libfabric CC=/usr/bin/gcc CFLAGS=-fPIC LDFLAGS= --no-recursion --disable-verbs --disable-usnic --disable-udp --disable-rxd --disable-shm --disable-mrail --disable-hook_debug --disable-perf --disable-rstream --disable-efa --disable-gni
+
+
