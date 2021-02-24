@@ -455,7 +455,7 @@ namespace gridtools {
                     send_halos_map.erase(it);
                 }
 
-                const auto tp_6 = clock_type::now();
+                //const auto tp_6 = clock_type::now();
                 // loop over all ranks and establish connection
                 {
                 int num_ranks = send_halos_map.size();
@@ -581,8 +581,6 @@ namespace gridtools {
                         }
 
                     }
-                }
-
                 }
 
                 //for (int rank = 0; rank<world_size; ++rank)
@@ -720,10 +718,13 @@ namespace gridtools {
                 //        }
                 //    }
                 //}
-                const auto tp_7 = clock_type::now();
+                const auto tp_10 = clock_type::now();
                 if (comm.rank() == 0)
                 {
-                    std::cout << "establish connections:     " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_7 - tp_6).count()*1.0e-9) << " s" << std::endl;
+                    std::cout << "all gather num ranks:      " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_8 - tp_7).count()*1.0e-9) << " s" << std::endl;
+                    std::cout << "all gather ranks:          " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_9 - tp_8).count()*1.0e-9) << " s" << std::endl;
+                    std::cout << "establish connections:     " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_10 - tp_9).count()*1.0e-9) << " s" << std::endl;
+                }
                 }
 
                 return pattern_container<communicator_type,grid_type,domain_id_type>(std::move(my_patterns), m_max_tag);
