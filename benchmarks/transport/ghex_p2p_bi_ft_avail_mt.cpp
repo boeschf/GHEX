@@ -75,10 +75,10 @@ int main(int argc, char *argv[])
     gridtools::ghex::timer timer, ttimer;
 
     if(argc != 4)
-	{
-	    std::cerr << "Usage: bench [niter] [msg_size] [inflight]" << "\n";
-	    std::terminate();
-	}
+    {
+        std::cerr << "Usage: bench [niter] [msg_size] [inflight]" << "\n";
+        std::terminate();
+    }
     niter = atoi(argv[1]);
     buff_size = atoi(argv[2]);
     inflight = atoi(argv[3]);
@@ -124,21 +124,21 @@ int main(int argc, char *argv[])
 #endif
 
             if (thread_id==0 && rank==0)
-		{
-		    std::cout << "\n\nrunning test " << __FILE__ << " with communicator " << typeid(comm).name() << "\n\n";
-		};
+        {
+            std::cout << "\n\nrunning test " << __FILE__ << " with communicator " << typeid(comm).name() << "\n\n";
+        };
 
             std::vector<MsgType> smsgs(inflight);
             std::vector<MsgType> rmsgs(inflight);
             std::vector<future_type> sreqs(inflight);
             std::vector<future_type> rreqs(inflight);
             for(int j=0; j<inflight; j++)
-		{
-		    smsgs[j].resize(buff_size);
-		    rmsgs[j].resize(buff_size);
-		    make_zero(smsgs[j]);
-		    make_zero(rmsgs[j]);
-		}
+        {
+            smsgs[j].resize(buff_size);
+            rmsgs[j].resize(buff_size);
+            make_zero(smsgs[j]);
+            make_zero(rmsgs[j]);
+        }
 
 #ifdef USE_OPENMP
 #pragma omp single
@@ -149,58 +149,58 @@ int main(int argc, char *argv[])
 #endif
 
             if(thread_id == 0)
-		{
-		    timer.tic();
-		    ttimer.tic();
-		    if(rank == 1)
-			std::cout << "number of threads: " << num_threads << ", multi-threaded: " << using_mt << "\n";
-		}
+        {
+            timer.tic();
+            ttimer.tic();
+            if(rank == 1)
+            std::cout << "number of threads: " << num_threads << ", multi-threaded: " << using_mt << "\n";
+        }
 
             int dbg = 0, sdbg = 0, rdbg = 0;
             int last_received = 0;
             int last_sent = 0;
-            int lsent = 0, lrecv = 0;       
+            int lsent = 0, lrecv = 0;
             while(sent < niter || received < niter)
-		{
-		    for(int j=0; j<inflight; j++)
-			{
-			    if(rank==0 && thread_id==0 && sdbg>=(niter/10)) {
-				std::cout << sent << " sent\n";
-				sdbg = 0;
-			    }
+        {
+            for(int j=0; j<inflight; j++)
+            {
+                if(rank==0 && thread_id==0 && sdbg>=(niter/10)) {
+                std::cout << sent << " sent\n";
+                sdbg = 0;
+                }
 
-			    if(rank==0 && thread_id==0 && rdbg>=(niter/10)) {
-				std::cout << received << " received\n";
-				rdbg = 0;
-			    }
+                if(rank==0 && thread_id==0 && rdbg>=(niter/10)) {
+                std::cout << received << " received\n";
+                rdbg = 0;
+                }
 
-			    if(thread_id == 0 && dbg >= (niter/10)) {
-				dbg = 0;
-				std::cout << rank << " total bwdt MB/s:      "
-					  << ((double)(received-last_received + sent-last_sent)*size*buff_size/2)/timer.toc()
-					  << "\n";
-				timer.tic();
-				last_received = received;
-				last_sent = sent;
-			    }
+                if(thread_id == 0 && dbg >= (niter/10)) {
+                dbg = 0;
+                std::cout << rank << " total bwdt MB/s:      "
+                      << ((double)(received-last_received + sent-last_sent)*size*buff_size/2)/timer.toc()
+                      << "\n";
+                timer.tic();
+                last_received = received;
+                last_sent = sent;
+                }
 
-			    if(rreqs[j].test()) {
-				received++;
-				lrecv++;
-				rdbg+=num_threads;
-				dbg+=num_threads;
-				rreqs[j] = comm.recv(rmsgs[j], peer_rank, thread_id*inflight + j);
-			    }
+                if(rreqs[j].test()) {
+                received++;
+                lrecv++;
+                rdbg+=num_threads;
+                dbg+=num_threads;
+                rreqs[j] = comm.recv(rmsgs[j], peer_rank, thread_id*inflight + j);
+                }
 
-			    if(lsent < lrecv+2*inflight && sent < niter && sreqs[j].test()) {
-				sent++;
-				lsent++;
-				sdbg+=num_threads;
-				dbg+=num_threads;
-				sreqs[j] = comm.send(smsgs[j], peer_rank, thread_id*inflight + j);
-			    }
-			}
-		}
+                if(lsent < lrecv+2*inflight && sent < niter && sreqs[j].test()) {
+                sent++;
+                lsent++;
+                sdbg+=num_threads;
+                dbg+=num_threads;
+                sreqs[j] = comm.send(smsgs[j], peer_rank, thread_id*inflight + j);
+                }
+            }
+        }
 
 #ifdef USE_OPENMP
 #pragma omp single
@@ -213,17 +213,22 @@ int main(int argc, char *argv[])
             if(thread_id == 0 && rank == 0){
                 const auto t = ttimer.toc();
                 double bw = ((double)niter*size*buff_size)/t;
+                // clang-format off
                 std::cout << "time:       " << t/1000000 << "s\n";
                 std::cout << "final MB/s: " << bw << "\n";
                 std::cout << "CSVData"
-                          << ", niter, "        << niter
-                          << ", buff_size, "    << buff_size
-                          << ", inflight, "     << inflight
-                          << ", num_threads, "  << num_threads
-                          << ", syncmode, "     << syncmode
-                          << ", waitmode, "     << waitmode
-                          << ", transport, "    << ghex::tl::tag_to_string(transport{})
-                          << ", BW MB/s, "      << bw << "\n";
+                          << ", niter, " << niter
+                          << ", buff_size, " << buff_size
+                          << ", inflight, " << inflight
+                          << ", num_threads, " << num_threads
+                          << ", syncmode, " << syncmode
+                          << ", waitmode, " << waitmode
+                          << ", transport, " << ghex::tl::tag_to_string(transport{})
+                          << ", BW MB/s, " << bw
+                          << ", progress, " << LIBFABRIC_PROGRESS_STRING
+                          << ", endpoint, " << LIBFABRIC_ENDPOINT_MULTI_STRING
+                          << ", threadlocal, " << LIBFABRIC_ENDPOINT_THREADLOCAL_STRING << "\n";
+                // clang-format on
             }
 
             // tail loops - submit RECV requests until

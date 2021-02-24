@@ -226,17 +226,22 @@ int main(int argc, char *argv[])
         {
             const auto t = ttimer.stoc();
             double bw = ((double)niter*size*buff_size)/t;
+            // clang-format off
             std::cout << "time:       " << t/1000000 << "s\n";
             std::cout << "final MB/s: " << bw << "\n";
             std::cout << "CSVData"
-                      << ", niter, "        << niter
-                      << ", buff_size, "    << buff_size
-                      << ", inflight, "     << inflight
-                      << ", num_threads, "  << num_threads
-                      << ", syncmode, "     << syncmode
-                      << ", waitmode, "     << waitmode
-                      << ", transport, "    << ghex::tl::tag_to_string(transport{})
-                      << ", BW MB/s, "      << bw << "\n";
+                      << ", niter, " << niter
+                      << ", buff_size, " << buff_size
+                      << ", inflight, " << inflight
+                      << ", num_threads, " << num_threads
+                      << ", syncmode, " << syncmode
+                      << ", waitmode, " << waitmode
+                      << ", transport, " << ghex::tl::tag_to_string(transport{})
+                      << ", BW MB/s, " << bw
+                      << ", progress, " << LIBFABRIC_PROGRESS_STRING
+                      << ", endpoint, " << LIBFABRIC_ENDPOINT_MULTI_STRING
+                      << ", threadlocal, " << LIBFABRIC_ENDPOINT_THREADLOCAL_STRING << "\n";
+            // clang-format on
         }
 
             // stop here to help produce a nice std output
