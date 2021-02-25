@@ -225,7 +225,7 @@ make_staged_pattern(
             }
         }
         my_pattern_conts[i] = std::make_unique<pattern_container_type>(std::move(my_patterns[i]), m_max_tag);
-        prev_max_tag = m_max_tag;
+        prev_max_tag = m_max_tag+1;
     }
     return my_pattern_conts;
 }
