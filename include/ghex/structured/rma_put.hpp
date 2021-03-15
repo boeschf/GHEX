@@ -54,7 +54,11 @@ visit(rma_range<SourceField>& s, rma_range<TargetField>& t, rma::locality, Visit
     {
         auto dst = t.ptr(coordinate{c0, c...});
         auto src = s.ptr(coordinate{c0, c...});
-        v(std::array<decltype(c0), sizeof...(c)+1>{c0, c...}, dst, src, s.m_chunk_size_);
+        std::array<decltype(c0), sizeof...(c)+1> coord{c0, c...};
+        for (unsigned int d=0; d<sizeof...(c)+1; ++d)
+            coord[d] += s.m_offset[d]+s.m_field.offsets()[d];
+        v(coord, dst, src, s.m_chunk_size_);
+        //v(std::array<decltype(c0), sizeof...(c)+1>{c0, c...}, dst, src, s.m_chunk_size_);
     },
     s.m_begin, s.m_end);
 }
