@@ -226,6 +226,11 @@ private: // member types
         std::unique_ptr<co_type> m_co;
         bool m_has_local_halos = false;
         bool m_has_node_local_halos = false;
+#ifdef GHEX_RMA_REGION
+        typename RangeGen<Field>::field_region m_region;
+        std::vector<std::function<void()>> m_open_funcs;
+        std::vector<std::function<void()>> m_close_funcs;
+#endif
 
         // construct from field, pattern and the maps storing rma handles, and patterns
         field_container(communicator_type comm, const Field& f, const pattern_type& pattern,
@@ -235,6 +240,9 @@ private: // member types
         , m_remote_pattern(remote_map.insert(std::make_pair(&pattern, pattern)).first->second)
         , m_local_pattern(local_map.insert(std::make_pair(&pattern, pattern)).first->second)
         , m_node_local_pattern(m_local_pattern)
+#ifdef GHEX_RMA_REGION
+        , m_region(f)
+#endif
         {
             // initialize the remote handle - this will effectively publish the rma pointers
             // will do nothing if already initialized
@@ -299,6 +307,9 @@ private: // member types
         , m_local_pattern(local_map.insert(std::make_pair(&pattern, pattern)).first->second)
         , m_node_local_pattern(node_local_map.insert(std::make_pair(&pattern, pattern)).first->second)
         , m_co{std::make_unique<co_type>(comm)}
+#ifdef GHEX_RMA_REGION
+        , m_region(f)
+#endif
         {
             // initialize the remote handle - this will effectively publish the rma pointers
             // will do nothing if already initialized
@@ -658,6 +669,7 @@ public:
                 
                 // get source ranges for fields
                 auto& s_range = std::get<I::value>(m_source_ranges_tuple);
+#ifndef GHEX_RMA_REGION
                 // put data
                 for (auto& s_vec : s_range.m_ranges)
                     for (auto& r : s_vec)
@@ -674,6 +686,23 @@ public:
                                 else return false;
                             })});
                     }
+#else
+                auto& f_cont  = std::get<I::value>(m_field_container_tuple);
+                for (std::size_t j=0; j<f_cont.size(); ++j)
+                {
+                    auto f_ptr = &f_cont[j];
+                    for (auto& r : s_range.m_ranges[j])
+                    {
+                        r.visit([f_ptr,&r](auto const& coord, auto * dst, auto const* src, auto length)
+                        {
+                            f_ptr->m_region.insert(coord, {dst, src, length});
+                            f_ptr->m_open_funcs.push_back([&r](){r.start_source_epoch();});
+                            f_ptr->m_close_funcs.push_back([&r](){r.end_source_epoch();});
+                        });
+                    }
+                }
+#endif
+
             });
         }
         m_initialized = true;
@@ -706,8 +735,31 @@ public:
                 m_node_local_handles.push_back(ex());
         // start remote exchange
         auto h = exchange_remote();
+#ifndef GHEX_RMA_REGION
         // put data as soon as ranges are writable
         await_requests(m_put_funcs, [comm = m_comm]() mutable {comm.progress();});
+#else
+        // loop over Fields
+        for (std::size_t i=0; i<boost::mp11::mp_size<field_types>::value; ++i)
+        {
+            boost::mp11::mp_with_index<boost::mp11::mp_size<field_types>::value>(i,
+            [this](auto i) {
+                // get the field Index 
+                using I = decltype(i);
+                auto& f_cont  = std::get<I::value>(m_field_container_tuple);
+                for (auto& f : f_cont)
+                {
+                    for (auto& x : f.m_open_funcs) x();
+                    f.m_region.visit([](auto * dst, auto const * src, auto length)
+                    {
+                        for (unsigned int i=0; i<length; ++i)
+                            dst[i] = src[i];
+                    });
+                    for (auto& x : f.m_close_funcs) x();
+                }
+            });
+        }
+#endif
         return {std::move(h),this};
     }
 

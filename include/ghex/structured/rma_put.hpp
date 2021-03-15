@@ -39,6 +39,26 @@ using gpu_to_gpu = std::integral_constant<bool,
     std::is_same<typename SourceField::arch_type, gridtools::ghex::gpu>::value &&
     std::is_same<typename TargetField::arch_type, gridtools::ghex::gpu>::value>;
 
+template<typename SourceField, typename TargetField, typename Visitor>
+std::enable_if_t<
+    cpu_to_cpu<SourceField,TargetField>::value && !rma_range<SourceField>::fuse_components::value>
+visit(rma_range<SourceField>& s, rma_range<TargetField>& t, rma::locality, Visitor& v)
+{
+    using sv_t = rma_range<SourceField>;
+    using coordinate = typename sv_t::coordinate;
+    gridtools::ghex::detail::for_loop<
+        sv_t::dimension::value,
+        sv_t::dimension::value,
+        typename sv_t::layout, 1>::
+    apply([&s,&t,&v](auto c0, auto... c)
+    {
+        auto dst = t.ptr(coordinate{c0, c...});
+        auto src = s.ptr(coordinate{c0, c...});
+        v(std::array<decltype(c0), sizeof...(c)+1>{c0, c...}, dst, src, s.m_chunk_size_);
+    },
+    s.m_begin, s.m_end);
+}
+
 // attributes needed for gcc to produce optimized code
 template<typename SourceField, typename TargetField>
 #ifdef __GNUG__
