@@ -24,6 +24,8 @@
 #include "./rma/range_factory.hpp"
 #include "./rma/handle.hpp"
 
+#define GHEX_RMA_REGION
+
 namespace gridtools {
 namespace ghex {
 
@@ -750,7 +752,7 @@ public:
                 for (auto& f : f_cont)
                 {
                     for (auto& x : f.m_open_funcs) x();
-                    f.m_region.visit([](auto * dst, auto const * src, auto length)
+                    f.m_region.visit([](auto * __restrict__ dst, auto const * __restrict__ src, auto length)
                     {
                         for (unsigned int i=0; i<length; ++i)
                             dst[i] = src[i];
