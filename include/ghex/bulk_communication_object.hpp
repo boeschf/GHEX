@@ -24,8 +24,6 @@
 #include "./rma/range_factory.hpp"
 #include "./rma/handle.hpp"
 
-#define GHEX_RMA_REGION
-
 namespace gridtools {
 namespace ghex {
 

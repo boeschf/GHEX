@@ -32,7 +32,7 @@ using halo_gen  = structured::regular::halo_generator<int,3>;
 #define HALO 1
 #define PX true
 #define PY true
-#define PZ false
+#define PZ true
 
 constexpr std::array<int,6>  halos{HALO,HALO,HALO,HALO,HALO,HALO};
 constexpr std::array<bool,3> periodic{PX,PY,PZ};
@@ -160,21 +160,6 @@ int expected(int coord, int dim, int first, int last, bool periodic_, int halo)
     if (last == dim*DIM-1 && coord >= ext) res = periodic_ ? coord - ext : -1;
     return res;
 }
-//int expected_z(int coord, int dim, int first, int last, bool periodic_, int halo)
-//{
-//    std::cout << coord << ", " << dim << ", " << first << ", " << last << ", " << periodic_ << ", " << halo << std::endl;
-//    std::cout << "coord < HALO ? " << (coord < HALO) << std::endl;
-//    if (coord < 0 && halo <= 0) return -1;
-//     std::cout << "  A" << std::endl;
-//    if (coord >= DIM && halo <= 0) return -1;
-//     std::cout << "  B" << std::endl;
-//    const auto ext = (last+1) - first;
-//    int res = first+coord;
-//    if (first == 0 && coord < 0) res = periodic_ ? dim*DIM + coord : -1;
-//    if (last == dim*DIM-1 && coord >= ext) res = periodic_ ? coord - ext : -1;
-//    std::cout << "  return " << res << std::endl;
-//    return res;
-//}
 
 template<typename Arr>
 bool compare(const Arr& v, int x, int y, int z)
@@ -397,7 +382,6 @@ void sim()
     auto context_ptr = factory::create(MPI_COMM_WORLD);
     auto& context    = *context_ptr;
     // 2D domain decomposition
-    arr dims{0,0,0}, coords{0,0,0};
     MPI_Dims_create(context.size(), 3, dims.data());
     if (context.rank()==0)
     std::cout << "decomposition : " << dims[0] << " " << dims[1] << " " << dims[2] << std::endl;
@@ -408,51 +392,9 @@ void sim()
     std::vector<domain> domains{ make_domain(context.rank(), coords) };
     // neighbor lookup
     domain_lu d_lu{dims};
-    //if (context.rank()==2)
-    //{
-    //    {
-    //    auto n_0 = d_lu(context.rank()*2+1, {0,-1});
-    //    std::cout << n_0.rank() << ", " << n_0.id() << std::endl;
-    //    std::cout << domains[0].domain_id() << std::endl;
-    //    }
-    //    {
-    //    auto n_0 = d_lu(context.rank()*2, {0,1});
-    //    std::cout << n_0.rank() << ", " << n_0.id() << std::endl;
-    //    std::cout << domains[1].domain_id() << std::endl;
-    //    }
-    //}
 
     auto staged_pattern = structured::regular::make_staged_pattern(context, domains, d_lu,
         arr{0,0,0}, arr{dims[0]*DIM-1,dims[1]*DIM-1,dims[2]*DIM-1}, halos, periodic);
-
-    //if (context.rank()==1)
-    //{
-    //int i = 0;
-    //for (auto& p_cont_ptr : staged_pattern)
-    //{
-    //    std::cout << "i = " << i << std::endl;
-    //    ++i;
-    //    for (auto& p : *p_cont_ptr)
-    //    {
-    //        std::cout << "pattern domain id = " << p.domain_id() << std::endl;
-    //        std::cout << "recv halos: " << std::endl;
-    //        for (auto& r : p.recv_halos())
-    //        {
-    //            std::cout << r.first << ": " << std::endl;
-    //            for (auto& h : r.second)
-    //                std::cout << "  " << h << std::endl;
-    //        }
-    //        std::cout << "send halos: " << std::endl;
-    //        for (auto& r : p.send_halos())
-    //        {
-    //            std::cout << r.first << ": " << std::endl;
-    //            for (auto& h : r.second)
-    //                std::cout << "  " << h << std::endl;
-    //        }
-    //        std::cout << std::endl;
-    //    }
-    //}
-    //}
 
     // make halo generator
     halo_gen gen{arr{0,0,0}, arr{dims[0]*DIM-1,dims[1]*DIM-1,dims[2]*DIM-1}, halos, periodic};
