@@ -126,7 +126,7 @@ foreach(_var ${_variants})
     endif()
 endforeach(_var)
 
-set(_tests_rma local_rma simple_regular_exchange)
+set(_tests_rma local_rma simple_regular_exchange simple_regular_exchange_3D)
 foreach (_t ${_tests_rma})
 
     set(t ${_t})
@@ -298,3 +298,6 @@ endif()
 
 add_subdirectory(transport)
 add_subdirectory(cubed_sphere)
+#if (GHEX_BUILD_FORTRAN)
+#add_subdirectory(bindings)
+#endif()

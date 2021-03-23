@@ -222,6 +222,15 @@ private: // member types
         rma::local_handle& m_local_handle;
         pattern_type& m_remote_pattern;
         pattern_type& m_local_pattern;
+        pattern_type& m_node_local_pattern;
+        std::unique_ptr<co_type> m_co;
+        bool m_has_local_halos = false;
+        bool m_has_node_local_halos = false;
+#ifdef GHEX_RMA_REGION
+        typename RangeGen<Field>::field_region m_region;
+        std::vector<std::function<void()>> m_open_funcs;
+        std::vector<std::function<void()>> m_close_funcs;
+#endif
 
         // construct from field, pattern and the maps storing rma handles, and patterns
         field_container(communicator_type comm, const Field& f, const pattern_type& pattern,
@@ -230,6 +239,10 @@ private: // member types
         , m_local_handle(l_handle_map.insert(std::make_pair((void*)(f.data()),rma::local_handle{})).first->second)
         , m_remote_pattern(remote_map.insert(std::make_pair(&pattern, pattern)).first->second)
         , m_local_pattern(local_map.insert(std::make_pair(&pattern, pattern)).first->second)
+        , m_node_local_pattern(m_local_pattern)
+#ifdef GHEX_RMA_REGION
+        , m_region(f)
+#endif
         {
             // initialize the remote handle - this will effectively publish the rma pointers
             // will do nothing if already initialized
@@ -278,6 +291,102 @@ private: // member types
                     if (local != rma::locality::remote) ++l_it;
                     else l_it = l_p.recv_halos().erase(l_it);
                 }
+
+                if (l_p.send_halos().size() > 0u || l_p.recv_halos().size() > 0u)
+                    m_has_local_halos = true;
+                m_has_node_local_halos = false;
+            }
+        }
+
+        // construct from field, pattern and the maps storing rma handles, and patterns
+        field_container(communicator_type comm, const Field& f, const pattern_type& pattern,
+            local_handle_map& l_handle_map, pattern_map& local_map, pattern_map& node_local_map, pattern_map& remote_map)
+        : m_field{f}
+        , m_local_handle(l_handle_map.insert(std::make_pair((void*)(f.data()),rma::local_handle{})).first->second)
+        , m_remote_pattern(remote_map.insert(std::make_pair(&pattern, pattern)).first->second)
+        , m_local_pattern(local_map.insert(std::make_pair(&pattern, pattern)).first->second)
+        , m_node_local_pattern(node_local_map.insert(std::make_pair(&pattern, pattern)).first->second)
+        , m_co{std::make_unique<co_type>(comm)}
+#ifdef GHEX_RMA_REGION
+        , m_region(f)
+#endif
+        {
+            // initialize the remote handle - this will effectively publish the rma pointers
+            // will do nothing if already initialized
+            m_local_handle.init(f.data(), f.bytes(), std::is_same<typename Field::arch_type, gpu>::value);
+
+            // prepare local and remote patterns
+            // =================================
+
+            // loop over all subdomains in pattern
+            for (int n = 0; n<pattern.size(); ++n)
+            {
+                // remove local fields from remote pattern
+                auto& r_p = m_remote_pattern[n];
+                auto r_it = r_p.send_halos().begin();
+                while (r_it != r_p.send_halos().end())
+                {
+                    const auto local = rma::is_local(comm, r_it->first.mpi_rank);
+                    const bool node_local = comm.is_local(r_it->first.mpi_rank);
+                    if (local != rma::locality::remote || node_local) r_it = r_p.send_halos().erase(r_it);
+                    else ++r_it;
+                }
+
+                // remove remote fields from local pattern
+                auto& l_p = m_local_pattern[n];
+                auto l_it = l_p.send_halos().begin();
+                while (l_it != l_p.send_halos().end())
+                {
+                    const auto local = rma::is_local(comm, l_it->first.mpi_rank);
+                    if (local != rma::locality::remote) ++l_it;
+                    else l_it = l_p.send_halos().erase(l_it);
+                }
+
+                // remove remote and local fields from node local pattern
+                auto& nl_p = m_node_local_pattern[n];
+                auto nl_it = nl_p.send_halos().begin();
+                while (nl_it != nl_p.send_halos().end())
+                {
+                    const auto local = rma::is_local(comm, nl_it->first.mpi_rank);
+                    const bool node_local = comm.is_local(nl_it->first.mpi_rank);
+                    if (local == rma::locality::remote && node_local) ++nl_it;
+                    else nl_it = nl_p.send_halos().erase(nl_it);
+                }
+
+
+                // remove local fields from remote pattern
+                r_it = r_p.recv_halos().begin();
+                while (r_it != r_p.recv_halos().end())
+                {
+                    const auto local = rma::is_local(comm, r_it->first.mpi_rank);
+                    const bool node_local = comm.is_local(r_it->first.mpi_rank);
+                    if (local != rma::locality::remote || node_local) r_it = r_p.recv_halos().erase(r_it);
+                    else ++r_it;
+                }
+
+                // remove remote fields from local pattern
+                l_it = l_p.recv_halos().begin();
+                while (l_it != l_p.recv_halos().end())
+                {
+                    const auto local = rma::is_local(comm, l_it->first.mpi_rank);
+                    if (local != rma::locality::remote) ++l_it;
+                    else l_it = l_p.recv_halos().erase(l_it);
+                }
+
+                // remove remote and local fields from inode local pattern
+                nl_it = nl_p.recv_halos().begin();
+                while (nl_it != nl_p.recv_halos().end())
+                {
+                    const auto local = rma::is_local(comm, nl_it->first.mpi_rank);
+                    const bool node_local = comm.is_local(nl_it->first.mpi_rank);
+                    if (local == rma::locality::remote && node_local) ++nl_it;
+                    else nl_it = nl_p.recv_halos().erase(nl_it);
+                }
+
+                if (l_p.send_halos().size() > 0u || l_p.recv_halos().size() > 0u)
+                    m_has_local_halos = true;
+                if (nl_p.send_halos().size() > 0u || nl_p.recv_halos().size() > 0u)
+                    m_has_node_local_halos = true;
             }
         }
 
@@ -321,7 +430,9 @@ private: // member types
 private: // members
     communicator_type                  m_comm;
     co_ptr                             m_co;
+    bool                               m_use_node_local_co;
     pattern_map                        m_local_pattern_map;
+    pattern_map                        m_node_local_pattern_map;
     pattern_map                        m_remote_pattern_map;
     field_container_t                  m_field_container_tuple;
     buffer_info_container_t            m_buffer_info_container_tuple;
@@ -333,19 +444,23 @@ private: // members
     std::vector<func_request>          m_put_funcs;
     std::vector<func_request>          m_wait_funcs;
     std::vector<std::function<void()>> m_open_funcs;
+    std::vector<std::function<co_handle()>> m_node_local_exchanges;
+    std::vector<co_handle> m_node_local_handles;
 #ifdef GHEX_BULK_UNIQUE_TAGS
     std::map<int,int>                  m_tag_map;
 #endif
 
 public: // ctors
-    bulk_communication_object(communicator_type comm)
+    bulk_communication_object(communicator_type comm, bool use_node_local_co = false)
     : m_comm(comm)
     , m_co{new co_type(comm), co_deleter{true}}
+    , m_use_node_local_co{use_node_local_co}
     {}
 
-    bulk_communication_object(co_type& co)
+    bulk_communication_object(co_type& co, bool use_node_local_co = false)
     : m_comm(co.communicator())
     , m_co{&co, co_deleter{false}}
+    , m_use_node_local_co{use_node_local_co}
     {}
 
     // move only
@@ -373,8 +488,27 @@ public:
         auto& s_range = std::get<s_range_t>(m_source_ranges_tuple);
 
         // store field
-        f_cont.push_back(field_container<Field>(m_comm, bi.get_field(), bi.get_pattern_container(),
-            m_local_handle_map, m_local_pattern_map, m_remote_pattern_map));
+        if (m_use_node_local_co)
+        {
+            f_cont.push_back(field_container<Field>(m_comm, bi.get_field(), bi.get_pattern_container(),
+                m_local_handle_map, m_local_pattern_map, m_node_local_pattern_map, m_remote_pattern_map));
+            if (f_cont.back().m_has_node_local_halos)
+            {
+                m_node_local_exchanges.push_back([
+                    field = f_cont.back().m_field,
+                    co_ptr = f_cont.back().m_co.get(),
+                    pat_ptr = &f_cont.back().m_node_local_pattern]() mutable
+                    {
+                        return co_ptr->exchange(pat_ptr->operator()(field));
+                    });
+            }
+        }
+        else
+        {
+            f_cont.push_back(field_container<Field>(m_comm, bi.get_field(), bi.get_pattern_container(),
+                m_local_handle_map, m_local_pattern_map, m_remote_pattern_map));
+        }
+
         s_range.m_ranges.resize(s_range.m_ranges.size()+1);
         t_range.m_ranges.resize(t_range.m_ranges.size()+1);
 
@@ -434,7 +568,13 @@ public:
             }
         }
     }
-    
+
+    // is co initialized
+    bool initialized() const noexcept
+    {
+        return m_initialized;
+    }
+
     // add multiple fields at once
     template<typename... F>
     void add_fields(buffer_info_type<F>... bis)
@@ -459,6 +599,9 @@ public:
     void init()
     {
         if (m_initialized) return;
+
+        if (m_use_node_local_co)
+        m_node_local_handles.reserve(m_node_local_exchanges.size());
 
         // loop over Fields
         for (std::size_t i=0; i<boost::mp11::mp_size<field_types>::value; ++i)
@@ -526,6 +669,7 @@ public:
                 
                 // get source ranges for fields
                 auto& s_range = std::get<I::value>(m_source_ranges_tuple);
+#ifndef GHEX_RMA_REGION
                 // put data
                 for (auto& s_vec : s_range.m_ranges)
                     for (auto& r : s_vec)
@@ -542,6 +686,23 @@ public:
                                 else return false;
                             })});
                     }
+#else
+                auto& f_cont  = std::get<I::value>(m_field_container_tuple);
+                for (std::size_t j=0; j<f_cont.size(); ++j)
+                {
+                    auto f_ptr = &f_cont[j];
+                    for (auto& r : s_range.m_ranges[j])
+                    {
+                        r.visit([f_ptr,&r](auto const& coord, auto * dst, auto const* src, auto length)
+                        {
+                            f_ptr->m_region.insert(coord, {dst, src, length});
+                            f_ptr->m_open_funcs.push_back([&r](){r.start_source_epoch();});
+                            f_ptr->m_close_funcs.push_back([&r](){r.end_source_epoch();});
+                        });
+                    }
+                }
+#endif
+
             });
         }
         m_initialized = true;
@@ -568,10 +729,37 @@ public:
         if (!m_initialized) init();
         // loop over Fields for making the ranges writable for remotes
         for (auto& x : m_open_funcs) x();
+        // start node local exchanges
+        if (m_use_node_local_co)
+            for (auto& ex : m_node_local_exchanges)
+                m_node_local_handles.push_back(ex());
         // start remote exchange
         auto h = exchange_remote();
+#ifndef GHEX_RMA_REGION
         // put data as soon as ranges are writable
         await_requests(m_put_funcs, [comm = m_comm]() mutable {comm.progress();});
+#else
+        // loop over Fields
+        for (std::size_t i=0; i<boost::mp11::mp_size<field_types>::value; ++i)
+        {
+            boost::mp11::mp_with_index<boost::mp11::mp_size<field_types>::value>(i,
+            [this](auto i) {
+                // get the field Index 
+                using I = decltype(i);
+                auto& f_cont  = std::get<I::value>(m_field_container_tuple);
+                for (auto& f : f_cont)
+                {
+                    for (auto& x : f.m_open_funcs) x();
+                    f.m_region.visit([](auto * __restrict__ dst, auto const * __restrict__ src, auto length)
+                    {
+                        for (unsigned int i=0; i<length; ++i)
+                            dst[i] = src[i];
+                    });
+                    for (auto& x : f.m_close_funcs) x();
+                }
+            });
+        }
+#endif
         return {std::move(h),this};
     }
 
@@ -579,7 +767,28 @@ private:
     void wait()
     {
         // wait for all local ranges to be filled
-        await_requests(m_wait_funcs);
+        //await_requests(m_wait_funcs);
+        // loop over Fields
+        for (std::size_t i=0; i<boost::mp11::mp_size<field_types>::value; ++i)
+        {
+            boost::mp11::mp_with_index<boost::mp11::mp_size<field_types>::value>(i,
+            [this](auto i) {
+                // get the field Index 
+                using I = decltype(i);
+                // get target ranges for fields and give remotes access
+                auto& t_range = std::get<I::value>(m_target_ranges_tuple);
+                for (auto& t_vec : t_range.m_ranges)
+                    for (auto& r : t_vec)
+                        r.start_target_epoch();
+            });
+        }
+        // wait for node local exchanges
+        if (m_use_node_local_co)
+        {
+            for (auto& h : m_node_local_handles)
+                h.wait();
+            m_node_local_handles.clear();
+        }
     }
 };
 

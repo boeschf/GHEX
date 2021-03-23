@@ -107,6 +107,63 @@ namespace gridtools {
             // forward declaration
             template<int D, int I, typename Layout, int Skip = 0>
             struct for_loop;
+            
+            template<int... Args>
+            struct for_loop<3,3,gridtools::layout_map<Args...>, 0>
+            {
+            private: // member types
+                using layout_t = gridtools::layout_map<Args...>;
+                using idx_x = std::integral_constant<int, layout_t::find(2)>;
+                using idx_y = std::integral_constant<int, layout_t::find(1)>;
+                using idx_z = std::integral_constant<int, layout_t::find(0)>;
+
+            public: // static member functions
+                template<typename Func, typename Array>
+                GT_FORCE_INLINE static void apply(Func&& f, Array&& first, Array&& last) noexcept
+                {
+                    const auto k_first = first[idx_z::value]; const auto k_last = last[idx_z::value]+1;
+                    const auto j_first = first[idx_y::value]; const auto j_last = last[idx_y::value]+1;
+                    const auto i_first = first[idx_x::value]; const auto i_last = last[idx_x::value]+1;
+                    for(auto k=k_first; k<k_last; ++k)
+                    for(auto j=j_first; j<j_last; ++j)
+                    for(auto i=i_first; i<i_last; ++i)
+                    {
+                        std::remove_cv_t<std::remove_reference_t<Array>> coord;
+                        coord[idx_z::value] = k;
+                        coord[idx_y::value] = j;
+                        coord[idx_x::value] = i;
+                        f(coord[0],coord[1],coord[2]);
+                    }
+                }
+            };
+
+            template<int... Args>
+            struct for_loop<3,3,gridtools::layout_map<Args...>, 1>
+            {
+            private: // member types
+                using layout_t = gridtools::layout_map<Args...>;
+                using idx_x = std::integral_constant<int, layout_t::find(2)>;
+                using idx_y = std::integral_constant<int, layout_t::find(1)>;
+                using idx_z = std::integral_constant<int, layout_t::find(0)>;
+
+            public: // static member functions
+                template<typename Func, typename Array>
+                GT_FORCE_INLINE static void apply(Func&& f, Array&& first, Array&& last) noexcept
+                {
+                    const auto k_first = first[idx_z::value]; const auto k_last = last[idx_z::value]+1;
+                    const auto j_first = first[idx_y::value]; const auto j_last = last[idx_y::value]+1;
+                    const auto i_first = first[idx_x::value];
+                    for(auto k=k_first; k<k_last; ++k)
+                    for(auto j=j_first; j<j_last; ++j)
+                    {
+                        std::remove_cv_t<std::remove_reference_t<Array>> coord;
+                        coord[idx_z::value] = k;
+                        coord[idx_y::value] = j;
+                        coord[idx_x::value] = i_first;
+                        f(coord[0],coord[1],coord[2]);
+                    }
+                }
+            };
 
             /** @brief compile time recursive generation of loop nest for a D-dimensional array
              *

@@ -82,9 +82,6 @@ int main(int argc, char *argv[])
 #pragma omp master
         num_threads = omp_get_num_threads();
     }
-#endif
-
-#ifdef USE_OPENMP
     MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &mode);
     if(mode != MPI_THREAD_MULTIPLE){
         std::cerr << "MPI_THREAD_MULTIPLE not supported by MPI, aborting\n";
@@ -145,6 +142,12 @@ int main(int argc, char *argv[])
 		    if(rank == 1)
 			std::cout << "number of threads: " << num_threads << ", multi-threaded: " << using_mt << "\n";
 		}
+
+            /* pre-post */
+            for(int j=0; j<inflight; j++){
+                rreqs[j] = comm.recv(rmsgs[j], peer_rank, thread_id*inflight + j);
+                sreqs[j] = comm.send(smsgs[j], peer_rank, thread_id*inflight + j);
+            }
 
             int dbg = 0, sdbg = 0, rdbg = 0;
             int last_received = 0;

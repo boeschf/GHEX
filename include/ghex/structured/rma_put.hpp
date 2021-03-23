@@ -39,11 +39,35 @@ using gpu_to_gpu = std::integral_constant<bool,
     std::is_same<typename SourceField::arch_type, gridtools::ghex::gpu>::value &&
     std::is_same<typename TargetField::arch_type, gridtools::ghex::gpu>::value>;
 
+template<typename SourceField, typename TargetField, typename Visitor>
+std::enable_if_t<
+    cpu_to_cpu<SourceField,TargetField>::value && !rma_range<SourceField>::fuse_components::value>
+visit(rma_range<SourceField>& s, rma_range<TargetField>& t, rma::locality, Visitor& v)
+{
+    using sv_t = rma_range<SourceField>;
+    using coordinate = typename sv_t::coordinate;
+    gridtools::ghex::detail::for_loop<
+        sv_t::dimension::value,
+        sv_t::dimension::value,
+        typename sv_t::layout, 1>::
+    apply([&s,&t,&v](auto c0, auto... c)
+    {
+        auto dst = t.ptr(coordinate{c0, c...});
+        auto src = s.ptr(coordinate{c0, c...});
+        std::array<decltype(c0), sizeof...(c)+1> coord{c0, c...};
+        for (unsigned int d=0; d<sizeof...(c)+1; ++d)
+            coord[d] += s.m_offset[d]+s.m_field.offsets()[d];
+        v(coord, dst, src, s.m_chunk_size_);
+        //v(std::array<decltype(c0), sizeof...(c)+1>{c0, c...}, dst, src, s.m_chunk_size_);
+    },
+    s.m_begin, s.m_end);
+}
+
 // attributes needed for gcc to produce optimized code
 template<typename SourceField, typename TargetField>
 #ifdef __GNUG__
 __attribute__ ((optimize ("no-tree-loop-distribute-patterns")))
-__attribute__ ((target ("sse2")))
+//__attribute__ ((target ("sse2")))
 #endif
 std::enable_if_t<
     cpu_to_cpu<SourceField,TargetField>::value && !rma_range<SourceField>::fuse_components::value>
@@ -90,6 +114,12 @@ put(rma_range<SourceField>& s, rma_range<TargetField>& t, rma::locality
     apply([&s,&t,nc](auto... c)
     {
         std::memcpy(t.ptr(coordinate{c...}), s.ptr(coordinate{c...}), s.m_chunk_size*nc);
+        // auto dst = t.ptr(coordinate{c...});
+        // auto src = s.ptr(coordinate{c...});
+        // for (unsigned int i=0; i<s.m_chunk_size_*nc; ++i)
+        // {
+        //     dst[i] = src[i]; 
+        // }
     },
     s.m_begin, s.m_end);
 }

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14.5)
 
-project(GHEX VERSION 0.1 LANGUAGES CXX)
+project(GHEX VERSION 0.1 LANGUAGES CXX Fortran)
 if(USE_GPU)
     set(CMAKE_CUDA_FLAGS "" CACHE STRING "")
     string(APPEND CMAKE_CUDA_FLAGS " --cudart shared --expt-relaxed-constexpr")
@@ -16,7 +16,6 @@ set(USE_HYBRID_TESTS "ON" CACHE BOOL "run gpu+cpu tests")
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wpedantic -Wno-unknown-pragmas")
 
 set(default_build_type "Debug")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -24,14 +23,16 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE STRING "Choose the type of build." FORCE)
     # Set the possible values of build type for cmake-gui
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+    set_property(CACHE CMAKE_CXX_FLAGS PROPERTY VALUE "-Wall -Wextra -Wpedantic -Wno-unknown-pragmas -Wno-terminate -Wno-unused-parameter")
 endif()
+
+list(APPEND GHEX_FORTRAN_FLAGS "-cpp" "-ffree-line-length-none" "-fcoarray=single")
 
 set(GHEX_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
 list(APPEND CMAKE_MODULE_PATH "${GHEX_MODULE_PATH}")
 
 find_package(MPI REQUIRED)
 find_package(Boost REQUIRED)
-find_package(OpenMP)
 find_library(LIBRT rt REQUIRED)
 
 set(_required_gridtools_version "2.0.0")
@@ -86,6 +87,7 @@ endif()
 
 set(GHEX_BUILD_TESTS OFF CACHE BOOL "True if tests shall be built")
 set(GHEX_BUILD_BENCHMARKS OFF CACHE BOOL "True if benchmarks shall be built")
+set(GHEX_BUILD_FORTRAN OFF CACHE BOOL "True if FORTRAN bindings shall be built")
 
 add_library(ghexlib INTERFACE)
 add_library(GHEX::ghexlib ALIAS ghexlib)
@@ -170,6 +172,9 @@ if (GHEX_BUILD_TESTS OR GHEX_BUILD_BENCHMARKS)
     endif()
 
     if (GHEX_BUILD_BENCHMARKS)
+        find_package(HWLOC)
+        find_package(HWCART)
+
         add_library(gtest_main_bench ./utils/gtest_main_bench.cpp)
         target_link_libraries(gtest_main_bench GTest::gtest ghexlib)
 
@@ -187,6 +192,10 @@ if (GHEX_BUILD_TESTS OR GHEX_BUILD_BENCHMARKS)
         add_library(gtest_main_bench_atlas ./utils/gtest_main_bench_atlas.cpp)
         target_link_libraries(gtest_main_bench_atlas GTest::gtest ghexlib)
     endif()
+endif()
+
+if (GHEX_BUILD_FORTRAN)
+    #    add_subdirectory(bindings)
 endif()
 
 include(GNUInstallDirs)

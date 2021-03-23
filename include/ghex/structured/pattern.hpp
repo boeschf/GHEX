@@ -12,6 +12,8 @@
 #define INCLUDED_GHEX_STRUCTURED_PATTERN_HPP
 
 #include <map>
+#include <chrono>
+#include <iostream>
 #include <iosfwd>
 #include "./grid.hpp"
 #include "../pattern.hpp"
@@ -219,6 +221,7 @@ namespace gridtools {
                 using iteration_space_pair      = typename pattern_type::iteration_space_pair;
                 using coordinate_type           = typename pattern_type::coordinate_type;
                 using extended_domain_id_type   = typename pattern_type::extended_domain_id_type;
+                using clock_type = std::chrono::high_resolution_clock;
 
                 // get this address from new communicator
                 auto comm = tl::mpi::setup_communicator(context.mpi_comm());
@@ -265,9 +268,19 @@ namespace gridtools {
 
                 // find all domains and their extents by all_gather operations
                 int my_num_domains   = my_domain_ids.size();
-                auto num_domain_ids  = comm.all_gather(my_num_domains).get();
-                auto domain_ids      = comm.all_gather(my_domain_ids, num_domain_ids).get();
-                auto domain_extents  = comm.all_gather(my_domain_extents, num_domain_ids).get();
+                const auto tp_0 = clock_type::now();
+                auto num_domain_ids  = comm.all_gather_b(my_num_domains);
+                const auto tp_1 = clock_type::now();
+                auto domain_ids      = comm.all_gather_b(my_domain_ids, num_domain_ids);
+                const auto tp_2 = clock_type::now();
+                auto domain_extents  = comm.all_gather_b(my_domain_extents, num_domain_ids);
+                const auto tp_3 = clock_type::now();
+                if (comm.rank() == 0)
+                {
+                    std::cout << "all gather num domains:    " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_1 - tp_0).count()*1.0e-9) << " s" << std::endl;
+                    std::cout << "all gather domain ids:     " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_2 - tp_1).count()*1.0e-9) << " s" << std::endl;
+                    std::cout << "all gather domain extents: " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_3 - tp_2).count()*1.0e-9) << " s" << std::endl;
+                }
                 const int world_size = num_domain_ids.size();
 
                 // find global extents
@@ -362,7 +375,13 @@ namespace gridtools {
 
                 // communicate max tag to be used for thread safety in communication object
                 // use all_gather
-                auto max_tags  = comm.all_gather(m_max_tag).get();
+                const auto tp_4 = clock_type::now();
+                auto max_tags  = comm.all_gather_b(m_max_tag);
+                const auto tp_5 = clock_type::now();
+                if (comm.rank() == 0)
+                {
+                    std::cout << "all gather tags:           " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_5 - tp_4).count()*1.0e-9) << " s" << std::endl;
+                }
                 // compute maximum tag and store in m_max_tag
                 for (auto x : max_tags)
                     m_max_tag = std::max(x,m_max_tag);
@@ -436,141 +455,276 @@ namespace gridtools {
                     send_halos_map.erase(it);
                 }
 
+                //const auto tp_6 = clock_type::now();
                 // loop over all ranks and establish connection
+                {
+                int num_ranks = send_halos_map.size();
+                
+                std::vector<int> ranks;
+                ranks.reserve(num_ranks);
+                for (const auto& p : send_halos_map)
+                    ranks.push_back(p.first);
+
+                std::vector<int> num_domains;
+                num_domains.reserve(num_ranks);
+                for (const auto& p : send_halos_map)
+                    num_domains.push_back(p.second.size());
+
+                const auto tp_7 = clock_type::now();
+                auto all_num_ranks  = comm.all_gather_b(num_ranks);
+                const auto tp_8 = clock_type::now();
+                auto all_ranks  = comm.all_gather_b(ranks, all_num_ranks);
+                const auto tp_9 = clock_type::now();
                 for (int rank = 0; rank<world_size; ++rank)
                 {
                     if (rank == comm.rank())
                     {
-                        // broadcast number of connecting ranks
-                        int num_ranks = send_halos_map.size();
-                        comm.broadcast(num_ranks, rank);
+                        int j=0;
+                        for (auto& nd : num_domains)
+                            comm.send(ranks[j++], 0, nd);
 
-                        if (num_ranks > 0)
+                        j=0;
+                        for (const auto& p : send_halos_map)
                         {
-                            // broadcast ranks
-                            std::vector<int> ranks;
-                            ranks.reserve(num_ranks);
-                            for (const auto& p : send_halos_map)
-                                ranks.push_back(p.first);
-                            comm.broadcast(&ranks[0],num_ranks,rank);
+                            // send domain ids
+                            std::vector<domain_id_type> dom_ids;
+                            dom_ids.reserve(num_domains[j]);
+                            for (const auto& p1 : p.second)
+                                dom_ids.push_back(p1.first);
+                            comm.send(ranks[j], 0, &dom_ids[0], num_domains[j]);
 
-                            // send number of domains to each rank
-                            std::vector<int> num_domains;
-                            num_domains.reserve(num_ranks);
-                            for (const auto& p : send_halos_map)
-                                num_domains.push_back(p.second.size());
-                            int j=0;
-                            for (auto& nd : num_domains)
-                                comm.send(ranks[j++], 0, nd);
+                            // send number of id_iteration_space pairs per domain
+                            std::vector<int> num_pairs;
+                            num_pairs.reserve(num_domains[j]);
+                            for (const auto& p1 : p.second)
+                                num_pairs.push_back(p1.second.size());
+                            comm.send(ranks[j], 0, &num_pairs[0], num_domains[j]);
 
-                            j=0;
-                            for (const auto& p : send_halos_map)
+                            int k=0;
+                            for (const auto& p1 : p.second)
                             {
-                                // send domain ids
-                                std::vector<domain_id_type> dom_ids;
-                                dom_ids.reserve(num_domains[j]);
-                                for (const auto& p1 : p.second)
-                                    dom_ids.push_back(p1.first);
-                                comm.send(ranks[j], 0, &dom_ids[0], num_domains[j]);
+                                // send extended_domain_ids for each domain j and each pair k
+                                std::vector<extended_domain_id_type> my_dom_ids;
+                                my_dom_ids.reserve(num_pairs[k]);
+                                for (const auto& p2 : p1.second)
+                                    my_dom_ids.push_back(p2.first);
+                                comm.send(ranks[j], 0, &my_dom_ids[0], num_pairs[k]);
 
-                                // send number of id_iteration_space pairs per domain
-                                std::vector<int> num_pairs;
-                                num_pairs.reserve(num_domains[j]);
-                                for (const auto& p1 : p.second)
-                                    num_pairs.push_back(p1.second.size());
-                                comm.send(ranks[j], 0, &num_pairs[0], num_domains[j]);
-
-                                int k=0;
-                                for (const auto& p1 : p.second)
+                                // send all iteration spaces for each domain j, each pair k
+                                for (const auto& p2 :  p1.second)
                                 {
-                                    // send extended_domain_ids for each domain j and each pair k
-                                    std::vector<extended_domain_id_type> my_dom_ids;
-                                    my_dom_ids.reserve(num_pairs[k]);
-                                    for (const auto& p2 : p1.second)
-                                        my_dom_ids.push_back(p2.first);
-                                    comm.send(ranks[j], 0, &my_dom_ids[0], num_pairs[k]);
-
-                                    // send all iteration spaces for each domain j, each pair k
-                                    for (const auto& p2 :  p1.second)
-                                    {
-                                        int num_is = p2.second.size();
-                                        comm.send(ranks[j], 0, num_is);
-                                        comm.send(ranks[j], 0, &p2.second[0], num_is);
-                                    }
-                                    ++k;
+                                    int num_is = p2.second.size();
+                                    comm.send(ranks[j], 0, num_is);
+                                    comm.send(ranks[j], 0, &p2.second[0], num_is);
                                 }
-                                ++j;
+                                ++k;
                             }
+                            ++j;
                         }
+
                     }
                     else
                     {
-                        // broadcast number of connecting ranks
-                        int num_ranks;
-                        comm.broadcast(num_ranks, rank);
-
-                        if (num_ranks > 0)
+                        // check if I am part of the ranks
+                        bool sending = false;
+                        for (auto r : all_ranks[rank])
                         {
-                            // broadcast ranks
-                            std::vector<int> ranks(num_ranks);
-                            comm.broadcast(&ranks[0],num_ranks,rank);
-
-                            // check if I am part of the ranks
-                            bool sending = false;
-                            for (auto r : ranks)
+                            if (r == comm.rank())
                             {
-                                if (r == comm.rank())
-                                {
-                                    sending = true;
-                                    break;
-                                }
-                            }
-                            if (sending)
-                            {
-                                // recv number of domains
-                                int num_domains;
-                                comm.recv(rank, 0, num_domains);
-
-                                // recv domain ids
-                                std::vector<domain_id_type> dom_ids(num_domains);
-                                comm.recv(rank, 0, &dom_ids[0], num_domains);
-
-                                // recv number of id_iteration_space pairs per domain
-                                std::vector<int> num_pairs(num_domains);
-                                comm.recv(rank, 0, &num_pairs[0], num_domains);
-
-                                int j=0;
-                                for (auto np : num_pairs)
-                                {
-                                    // recv extended_domain_ids for each domain j and all its np pairs
-                                    std::vector<extended_domain_id_type> send_dom_ids(np);
-                                    comm.recv(rank, 0, &send_dom_ids[0], np);
-
-                                    // find domain in my list of patterns
-                                    int k=0;
-                                    for (const auto& pat : my_patterns)
-                                    {
-                                        if (pat.domain_id() == dom_ids[j]) break;
-                                        ++k;
-                                    }
-                                    auto& pat = my_patterns[k];
-
-                                    // recv all iteration spaces for each domain and each pair
-                                    for (const auto& did : send_dom_ids)
-                                    {
-                                        int num_is;
-                                        comm.recv(rank, 0, num_is);
-                                        std::vector<iteration_space_pair> is(num_is);
-                                        comm.recv(rank, 0, &is[0], num_is);
-                                        auto& vec = pat.send_halos()[did];
-                                        vec.insert(vec.end(), is.begin(), is.end());
-                                    }
-                                    ++j;
-                                }
-
+                                sending = true;
+                                break;
                             }
                         }
+                        if (sending)
+                        {
+                            // recv number of domains
+                            int num_domains;
+                            comm.recv(rank, 0, num_domains);
+
+                            // recv domain ids
+                            std::vector<domain_id_type> dom_ids(num_domains);
+                            comm.recv(rank, 0, &dom_ids[0], num_domains);
+
+                            // recv number of id_iteration_space pairs per domain
+                            std::vector<int> num_pairs(num_domains);
+                            comm.recv(rank, 0, &num_pairs[0], num_domains);
+
+                            int j=0;
+                            for (auto np : num_pairs)
+                            {
+                                // recv extended_domain_ids for each domain j and all its np pairs
+                                std::vector<extended_domain_id_type> send_dom_ids(np);
+                                comm.recv(rank, 0, &send_dom_ids[0], np);
+
+                                // find domain in my list of patterns
+                                int k=0;
+                                for (const auto& pat : my_patterns)
+                                {
+                                    if (pat.domain_id() == dom_ids[j]) break;
+                                    ++k;
+                                }
+                                auto& pat = my_patterns[k];
+
+                                // recv all iteration spaces for each domain and each pair
+                                for (const auto& did : send_dom_ids)
+                                {
+                                    int num_is;
+                                    comm.recv(rank, 0, num_is);
+                                    std::vector<iteration_space_pair> is(num_is);
+                                    comm.recv(rank, 0, &is[0], num_is);
+                                    auto& vec = pat.send_halos()[did];
+                                    vec.insert(vec.end(), is.begin(), is.end());
+                                }
+                                ++j;
+                            }
+
+                        }
+
                     }
+                }
+
+                //for (int rank = 0; rank<world_size; ++rank)
+                //{
+                //    if (rank == comm.rank())
+                //    {
+                //        // broadcast number of connecting ranks
+                //        int num_ranks = send_halos_map.size();
+                //        comm.broadcast(num_ranks, rank);
+
+                //        if (num_ranks > 0)
+                //        {
+                //            // broadcast ranks
+                //            std::vector<int> ranks;
+                //            ranks.reserve(num_ranks);
+                //            for (const auto& p : send_halos_map)
+                //                ranks.push_back(p.first);
+                //            comm.broadcast(&ranks[0],num_ranks,rank);
+
+                //            // send number of domains to each rank
+                //            std::vector<int> num_domains;
+                //            num_domains.reserve(num_ranks);
+                //            for (const auto& p : send_halos_map)
+                //                num_domains.push_back(p.second.size());
+                //            int j=0;
+                //            for (auto& nd : num_domains)
+                //                comm.send(ranks[j++], 0, nd);
+
+                //            j=0;
+                //            for (const auto& p : send_halos_map)
+                //            {
+                //                // send domain ids
+                //                std::vector<domain_id_type> dom_ids;
+                //                dom_ids.reserve(num_domains[j]);
+                //                for (const auto& p1 : p.second)
+                //                    dom_ids.push_back(p1.first);
+                //                comm.send(ranks[j], 0, &dom_ids[0], num_domains[j]);
+
+                //                // send number of id_iteration_space pairs per domain
+                //                std::vector<int> num_pairs;
+                //                num_pairs.reserve(num_domains[j]);
+                //                for (const auto& p1 : p.second)
+                //                    num_pairs.push_back(p1.second.size());
+                //                comm.send(ranks[j], 0, &num_pairs[0], num_domains[j]);
+
+                //                int k=0;
+                //                for (const auto& p1 : p.second)
+                //                {
+                //                    // send extended_domain_ids for each domain j and each pair k
+                //                    std::vector<extended_domain_id_type> my_dom_ids;
+                //                    my_dom_ids.reserve(num_pairs[k]);
+                //                    for (const auto& p2 : p1.second)
+                //                        my_dom_ids.push_back(p2.first);
+                //                    comm.send(ranks[j], 0, &my_dom_ids[0], num_pairs[k]);
+
+                //                    // send all iteration spaces for each domain j, each pair k
+                //                    for (const auto& p2 :  p1.second)
+                //                    {
+                //                        int num_is = p2.second.size();
+                //                        comm.send(ranks[j], 0, num_is);
+                //                        comm.send(ranks[j], 0, &p2.second[0], num_is);
+                //                    }
+                //                    ++k;
+                //                }
+                //                ++j;
+                //            }
+                //        }
+                //    }
+                //    else
+                //    {
+                //        // broadcast number of connecting ranks
+                //        int num_ranks;
+                //        comm.broadcast(num_ranks, rank);
+
+                //        if (num_ranks > 0)
+                //        {
+                //            // broadcast ranks
+                //            std::vector<int> ranks(num_ranks);
+                //            comm.broadcast(&ranks[0],num_ranks,rank);
+
+                //            // check if I am part of the ranks
+                //            bool sending = false;
+                //            for (auto r : ranks)
+                //            {
+                //                if (r == comm.rank())
+                //                {
+                //                    sending = true;
+                //                    break;
+                //                }
+                //            }
+                //            if (sending)
+                //            {
+                //                // recv number of domains
+                //                int num_domains;
+                //                comm.recv(rank, 0, num_domains);
+
+                //                // recv domain ids
+                //                std::vector<domain_id_type> dom_ids(num_domains);
+                //                comm.recv(rank, 0, &dom_ids[0], num_domains);
+
+                //                // recv number of id_iteration_space pairs per domain
+                //                std::vector<int> num_pairs(num_domains);
+                //                comm.recv(rank, 0, &num_pairs[0], num_domains);
+
+                //                int j=0;
+                //                for (auto np : num_pairs)
+                //                {
+                //                    // recv extended_domain_ids for each domain j and all its np pairs
+                //                    std::vector<extended_domain_id_type> send_dom_ids(np);
+                //                    comm.recv(rank, 0, &send_dom_ids[0], np);
+
+                //                    // find domain in my list of patterns
+                //                    int k=0;
+                //                    for (const auto& pat : my_patterns)
+                //                    {
+                //                        if (pat.domain_id() == dom_ids[j]) break;
+                //                        ++k;
+                //                    }
+                //                    auto& pat = my_patterns[k];
+
+                //                    // recv all iteration spaces for each domain and each pair
+                //                    for (const auto& did : send_dom_ids)
+                //                    {
+                //                        int num_is;
+                //                        comm.recv(rank, 0, num_is);
+                //                        std::vector<iteration_space_pair> is(num_is);
+                //                        comm.recv(rank, 0, &is[0], num_is);
+                //                        auto& vec = pat.send_halos()[did];
+                //                        vec.insert(vec.end(), is.begin(), is.end());
+                //                    }
+                //                    ++j;
+                //                }
+
+                //            }
+                //        }
+                //    }
+                //}
+                const auto tp_10 = clock_type::now();
+                if (comm.rank() == 0)
+                {
+                    std::cout << "all gather num ranks:      " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_8 - tp_7).count()*1.0e-9) << " s" << std::endl;
+                    std::cout << "all gather ranks:          " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_9 - tp_8).count()*1.0e-9) << " s" << std::endl;
+                    std::cout << "establish connections:     " << (std::chrono::duration_cast<std::chrono::nanoseconds>(tp_10 - tp_9).count()*1.0e-9) << " s" << std::endl;
+                }
                 }
 
                 return pattern_container<communicator_type,grid_type,domain_id_type>(std::move(my_patterns), m_max_tag);

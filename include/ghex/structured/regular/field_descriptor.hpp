@@ -87,6 +87,7 @@ public: // ctors
             // number of values to pack
             const size_type size = is.size()*base::num_components();
             serialization_type::pack_batch( make_pack_is(is,buffer,size), arg );
+            //serialization_type::pack( make_pack_is(is,buffer,size), arg );
             buffer += size;
         }
     }
@@ -98,6 +99,7 @@ public: // ctors
             // number of values to pack
             const size_type size = is.size()*base::num_components();
             serialization_type::unpack_batch( make_unpack_is(is,buffer,size), arg );
+            //serialization_type::unpack( make_unpack_is(is,buffer,size), arg );
             buffer += size;
         }
     }

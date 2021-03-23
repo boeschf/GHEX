@@ -190,12 +190,88 @@ struct rma_range_generator
             );
         }
 
+        template<typename Visitor>
+        void visit(Visitor v)
+        {
+            RangeFactory::call_back_with_type(m_remote_range, [this, &v] (auto& r)
+            {
+                visit(r,v);
+            });
+        }
+
+        template<typename TargetRange, typename Visitor>
+        void visit(TargetRange& tr, Visitor & v)
+        {
+            ::gridtools::ghex::structured::visit(m_local_range, tr, m_remote_range.m_loc, v);
+        }
+
     private:
         template<typename TargetRange>
         void init(TargetRange& tr, rma::range& r)
         {
             using T = typename TargetRange::value_type;
             tr.m_field.set_data((T*)r.get_ptr());
+        }
+    };
+
+    //template<typename RangeFactory, typename Communicator>
+    struct field_region
+    {
+        using field_type = Field;
+        using value_type = typename Field::value_type;
+        using dimension = typename Field::dimension;
+        using array = std::array<unsigned int, dimension::value>;
+
+        struct line
+        {
+            value_type*       m_dst;
+            value_type const* m_src;
+            unsigned int      m_length;
+        };
+
+        array                                          m_dims;
+        std::array<unsigned int, dimension::value - 1> m_strides;
+        std::vector<std::vector<line>>                 m_lines;
+        unsigned int                                   m_size;
+
+        field_region(const Field& f)
+        {
+            for (unsigned int d=0; d<dimension::value; ++d)
+                m_dims[d] = f.extents()[d];
+            std::partial_sum(
+                m_dims.begin() + 1, m_dims.end(), m_strides.begin(), std::multiplies<unsigned int>());
+            m_size = m_strides.back();
+            m_lines.resize(m_strides.back());
+        }
+
+        template<typename Array>
+        void insert(Array const & coord_, line l/*, unsigned int chunk = 160*/)
+        {
+            array coord;
+            for (unsigned int d=0; d<dimension::value; ++d) coord[d] = coord_[d];
+            unsigned int idx = coord[1];
+            for (unsigned int d = 1; d < dimension::value - 1; ++d) idx += coord[d + 1] * m_strides[d - 1];
+            //while (l.m_length > 0)
+            //{
+            //    auto c = l.m_length > chunk ? chunk : l.m_length;
+            //    m_lines[idx].push_back(l);
+            //    m_lines[idx].back().m_length = c;
+            //    l.m_length -= c;
+            //    l.m_dst += c;
+            //    l.m_src += c;
+            //}
+            m_lines[idx].push_back(l);
+            std::sort(m_lines[idx].begin(), m_lines[idx].end(), [](line const& a, line const& b)
+                { return a.m_src < b.m_src ? true : (a.m_src > b.m_src ? false : (a.m_length < b.m_length)); });
+        }
+
+        template<typename Visitor>
+        void visit(Visitor v)
+        {
+            for (unsigned int i = 0; i < m_size; ++i)
+            {
+                for (const auto& l : m_lines[i]) { v(l.m_dst, l.m_src, l.m_length); }
+            }
         }
     };
 };
