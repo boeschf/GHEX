@@ -272,8 +272,8 @@ bool run(Context& context, const Pattern& pattern, const SPattern& spattern, con
     }
     else
     {
-        co.exchange(spattern[0]->operator(field_gpu)).wait();
-        co.exchange(spattern[1]->operator(field_gpu)).wait();
+        co.exchange(spattern[0]->operator()(field_gpu)).wait();
+        co.exchange(spattern[1]->operator()(field_gpu)).wait();
     }
 #else
     co.exchange(spattern[0]->operator()(field)).wait();

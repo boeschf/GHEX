@@ -382,6 +382,7 @@ void sim()
     auto context_ptr = factory::create(MPI_COMM_WORLD);
     auto& context    = *context_ptr;
     // 2D domain decomposition
+    arr dims{0,0,0}, coords{0,0,0};
     MPI_Dims_create(context.size(), 3, dims.data());
     if (context.rank()==0)
     std::cout << "decomposition : " << dims[0] << " " << dims[1] << " " << dims[2] << std::endl;
