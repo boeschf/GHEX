@@ -190,21 +190,6 @@ struct rma_range_generator
             );
         }
 
-        template<typename Visitor>
-        void visit(Visitor v)
-        {
-            RangeFactory::call_back_with_type(m_remote_range, [this, &v] (auto& r)
-            {
-                visit(r,v);
-            });
-        }
-
-        template<typename TargetRange, typename Visitor>
-        void visit(TargetRange& tr, Visitor & v)
-        {
-            ::gridtools::ghex::structured::visit(m_local_range, tr, m_remote_range.m_loc, v);
-        }
-
     private:
         template<typename TargetRange>
         void init(TargetRange& tr, rma::range& r)
