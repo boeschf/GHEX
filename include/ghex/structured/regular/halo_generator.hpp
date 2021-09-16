@@ -78,14 +78,6 @@ class halo_generator<DomainIdType, std::integral_constant<int, Dimension>>
         std::copy(periodic.begin(), periodic.end(), m_periodic.begin());
     }
 
-    // construct without periodicity
-    halo_generator(std::initializer_list<int> halos)
-    {
-        m_halos.fill(0);
-        m_periodic.fill(false);
-        std::copy(halos.begin(), halos.end(), m_halos.begin());
-    }
-
     /** @brief generate halos
       * @param dom local domain instance
       * @return vector of halos of type box2 */
