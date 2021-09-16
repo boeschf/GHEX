@@ -29,9 +29,11 @@
 #include <ghex/common/timer.hpp>
 
 #include <gridtools/common/array.hpp>
-#ifdef __CUDACC__
+#include <ghex/common/defs.hpp>
+#ifdef GHEX_CUDACC
 #include <gridtools/common/cuda_util.hpp>
 #include <gridtools/common/host_device.hpp>
+#include <ghex/common/cuda_runtime.hpp>
 #endif
 
 using transport = gridtools::ghex::tl::mpi_tag;
@@ -59,19 +61,19 @@ namespace halo_exchange_3D_generic_full {
     typedef long long int T3;
 #endif
 
-    using domain_descriptor_type = gridtools::ghex::structured::regular::domain_descriptor<int,3>;
-    using halo_generator_type = gridtools::ghex::structured::regular::halo_generator<int,3>;
+    using domain_descriptor_type = gridtools::ghex::structured::regular::domain_descriptor<int,std::integral_constant<int, 3>>;
+    using halo_generator_type = gridtools::ghex::structured::regular::halo_generator<int,std::integral_constant<int, 3>>;
     template<typename T, typename Arch, int... Is>
-    using field_descriptor_type  = gridtools::ghex::structured::regular::field_descriptor<T,Arch,domain_descriptor_type, Is...>;
+    using field_descriptor_type  = gridtools::ghex::structured::regular::field_descriptor<T,Arch,domain_descriptor_type, ::gridtools::layout_map<Is...>>;
 
-#ifdef __CUDACC__
+#ifdef GHEX_CUDACC
     using arch_type = gridtools::ghex::gpu;
 #else
     using arch_type = gridtools::ghex::cpu;
 #endif
 
     template<typename T, typename Arch, typename DomainDescriptor, int... Order>
-    void printbuff(std::ostream& file, const gridtools::ghex::structured::regular::field_descriptor<T,Arch,DomainDescriptor, Order...>& field)
+    void printbuff(std::ostream& file, const gridtools::ghex::structured::regular::field_descriptor<T,Arch,DomainDescriptor, ::gridtools::layout_map<Order...>>& field)
     {
         if (field.extents()[0] <= 10 && field.extents()[1] <= 10 && field.extents()[2] <= 6)
         {
@@ -139,13 +141,13 @@ namespace halo_exchange_3D_generic_full {
         std::vector<domain_descriptor_type> local_domains{local_domain};
 
         // wrap raw fields
-        auto a = gridtools::ghex::wrap_field<gridtools::ghex::cpu,I1,I2,I3>(local_domain, _a,
+        auto a = gridtools::ghex::wrap_field<gridtools::ghex::cpu,::gridtools::layout_map<I1,I2,I3>>(local_domain, _a,
             std::array<int,3>{H1m1,H2m1,H3m1},
             std::array<int,3>{(DIM1 + H1m1 + H1p1), (DIM2 + H2m1 + H2p1), (DIM3 + H3m1 + H3p1)});
-        auto b = gridtools::ghex::wrap_field<gridtools::ghex::cpu,I1,I2,I3>(local_domain, _b,
+        auto b = gridtools::ghex::wrap_field<gridtools::ghex::cpu,::gridtools::layout_map<I1,I2,I3>>(local_domain, _b,
             std::array<int,3>{H1m2,H2m2,H3m2},
             std::array<int,3>{(DIM1 + H1m2 + H1p2), (DIM2 + H2m2 + H2p2), (DIM3 + H3m2 + H3p2)});
-        auto c = gridtools::ghex::wrap_field<gridtools::ghex::cpu,I1,I2,I3>(local_domain, _c,
+        auto c = gridtools::ghex::wrap_field<gridtools::ghex::cpu,::gridtools::layout_map<I1,I2,I3>>(local_domain, _c,
             std::array<int,3>{H1m3,H2m3,H3m3},
             std::array<int,3>{(DIM1 + H1m3 + H1p3), (DIM2 + H2m3 + H2p3), (DIM3 + H3m3 + H3p3)});
 
@@ -217,7 +219,7 @@ namespace halo_exchange_3D_generic_full {
             triple_t<USE_DOUBLE, T3>::data_type *gpu_c = 0;
             file << "***** GPU ON *****\n";
 
-#ifdef __CUDACC__
+#ifdef GHEX_CUDACC
             GT_CUDA_CHECK(cudaMalloc(&gpu_a,
                 (DIM1 + H1m1 + H1p1) * (DIM2 + H2m1 + H2p1) * (DIM3 + H3m1 + H3p1) *
                     sizeof(triple_t<USE_DOUBLE, T1>::data_type)));
@@ -259,13 +261,13 @@ namespace halo_exchange_3D_generic_full {
 #endif
 
             // wrap raw fields
-            auto field1 = gridtools::ghex::wrap_field<arch_type,I1,I2,I3>(local_domain, gpu_a,
+            auto field1 = gridtools::ghex::wrap_field<arch_type,::gridtools::layout_map<I1,I2,I3>>(local_domain, gpu_a,
                 std::array<int,3>{H1m1,H2m1,H3m1},
                 std::array<int,3>{(DIM1 + H1m1 + H1p1), (DIM2 + H2m1 + H2p1), (DIM3 + H3m1 + H3p1)});
-            auto field2 = gridtools::ghex::wrap_field<arch_type,I1,I2,I3>(local_domain, gpu_b,
+            auto field2 = gridtools::ghex::wrap_field<arch_type,::gridtools::layout_map<I1,I2,I3>>(local_domain, gpu_b,
                 std::array<int,3>{H1m2,H2m2,H3m2},
                 std::array<int,3>{(DIM1 + H1m2 + H1p2), (DIM2 + H2m2 + H2p2), (DIM3 + H3m2 + H3p2)});
-            auto field3 = gridtools::ghex::wrap_field<arch_type,I1,I2,I3>(local_domain, gpu_c,
+            auto field3 = gridtools::ghex::wrap_field<arch_type,::gridtools::layout_map<I1,I2,I3>>(local_domain, gpu_c,
                 std::array<int,3>{H1m3,H2m3,H3m3},
                 std::array<int,3>{(DIM1 + H1m3 + H1p3), (DIM2 + H2m3 + H2p3), (DIM3 + H3m3 + H3p3)});
 
@@ -371,7 +373,7 @@ namespace halo_exchange_3D_generic_full {
                 << std::scientific << std::setprecision(4) << std::right << std::setw(12) << t_global.max()/1000.0
                 << std::endl;
 
-#ifdef __CUDACC__
+#ifdef GHEX_CUDACC
             GT_CUDA_CHECK(cudaMemcpy(a.data(),
                 gpu_a,
                 (DIM1 + H1m1 + H1p1) * (DIM2 + H2m1 + H2p1) * (DIM3 + H3m1 + H3p1) *
@@ -2251,7 +2253,7 @@ TEST(Communication, comm_2_test_halo_exchange_3D_generic_full) {
     const int Ny = 260;
     const int Nz = 80;
 
-#ifdef __CUDACC__
+#ifdef GHEX_CUDACC
     gridtools::ghex::tl::mpi::communicator_base mpi_comm;
     int num_devices_per_node;
     cudaGetDeviceCount(&num_devices_per_node);
@@ -2280,7 +2282,7 @@ TEST(Communication, comm_2_test_halo_exchange_3D_generic_full) {
     //passed = halo_exchange_3D_generic_full::test(false, Nx, Ny, Nz, 0, 1, 2, 3, 2, 1, 0, 1, 2, 3, 2, 1, 0, 1, 2, 3, 2, 1);
     passed = halo_exchange_3D_generic_full::test(false, Nx, Ny, Nz, 3, 3, 3, 3, 0, 0, 3, 3, 3, 3, 0, 0, 3, 3, 3, 3, 0, 0);
 #endif
-#ifdef __CUDACC__
+#ifdef GHEX_CUDACC
     }
 #endif
 

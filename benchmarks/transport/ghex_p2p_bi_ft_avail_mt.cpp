@@ -11,7 +11,7 @@
 #include <iostream>
 #include <vector>
 #include <atomic>
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
 #include <omp.h>
 #endif
 
@@ -21,7 +21,7 @@
 
 namespace ghex = gridtools::ghex;
 
-#ifdef USE_UCP
+#ifdef GHEX_USE_UCP
 // UCX backend
 #include <ghex/transport_layer/ucx/context.hpp>
 using transport    = ghex::tl::ucx_tag;
@@ -39,7 +39,7 @@ using future_type = typename communicator_type::future<void>;
 using MsgType = gridtools::ghex::tl::message_buffer<>;
 
 
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
 std::atomic<int> sent(0);
 std::atomic<int> received(0);
 std::atomic<int> tail_send(0);
@@ -51,7 +51,7 @@ int tail_send(0);
 int tail_recv(0);
 #endif
 
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
 #define THREADID omp_get_thread_num()
 #else
 #define THREADID 0
@@ -74,14 +74,18 @@ int main(int argc, char *argv[])
     inflight = atoi(argv[3]);
 
     int num_threads = 1;
-    gridtools::ghex::tl::barrier_t barrier;
 
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
 #pragma omp parallel
     {
 #pragma omp master
         num_threads = omp_get_num_threads();
     }
+#endif
+
+    gridtools::ghex::tl::barrier_t barrier(num_threads);
+
+#ifdef GHEX_USE_OPENMP
     MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &mode);
     if(mode != MPI_THREAD_MULTIPLE){
         std::cerr << "MPI_THREAD_MULTIPLE not supported by MPI, aborting\n";
@@ -95,7 +99,7 @@ int main(int argc, char *argv[])
         auto context_ptr = ghex::tl::context_factory<transport>::create(MPI_COMM_WORLD);
         auto& context = *context_ptr;
 
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
 #pragma omp parallel
 #endif
         {
@@ -106,7 +110,7 @@ int main(int argc, char *argv[])
             const auto peer_rank   = (rank+1)%2;
 
             bool using_mt = false;
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
             using_mt = true;
 #endif
 
@@ -127,13 +131,7 @@ int main(int argc, char *argv[])
 		    make_zero(rmsgs[j]);
 		}
 
-#ifdef USE_OPENMP
-#pragma omp single
-#endif
-            barrier.rank_barrier(comm);
-#ifdef USE_OPENMP
-#pragma omp barrier
-#endif
+            barrier(comm);
 
             if(thread_id == 0)
 		{
@@ -195,13 +193,7 @@ int main(int argc, char *argv[])
 			}
 		}
 
-#ifdef USE_OPENMP
-#pragma omp single
-#endif
-            barrier.rank_barrier(comm);
-#ifdef USE_OPENMP
-#pragma omp barrier
-#endif
+            barrier(comm);
 
             if(thread_id == 0 && rank == 0){
                 const auto t = ttimer.toc();
@@ -245,7 +237,7 @@ int main(int argc, char *argv[])
                 future_type sf, rf;
                 MsgType smsg(1), rmsg(1);
 
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
 #pragma omp master
 #endif
                 {
@@ -263,7 +255,7 @@ int main(int argc, char *argv[])
                         }
                     }
 
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
 #pragma omp master
 #endif
                     {

@@ -1,6 +1,8 @@
 PROGRAM fhex_bench
   use iso_fortran_env
+#ifdef GHEX_USE_OPENMP
   use omp_lib
+#endif
   use ghex_mod
   use ghex_comm_mod
   use ghex_message_mod
@@ -14,15 +16,11 @@ PROGRAM fhex_bench
   ! threadprivate variables
   integer :: comm_cnt = 0, nlsend_cnt = 0, nlrecv_cnt = 0, submit_cnt = 0, submit_recv_cnt = 0
   integer :: thread_id = 0
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
   !$omp threadprivate(comm_cnt, nlsend_cnt, nlrecv_cnt, submit_cnt, submit_recv_cnt, thread_id)
 #endif
 
-#ifdef USE_OPENMP
-  integer(atomic_int_kind) :: sent[*] = 0, received[*] = 0, tail_send[*] = 0, tail_recv[*] = 0
-#else
   integer :: sent = 0, received = 0, tail_send = 0, tail_recv = 0
-#endif
 
   ! local variables
   integer :: mpi_err, mpi_threading
@@ -32,24 +30,24 @@ PROGRAM fhex_bench
   integer :: inflight
   
   if( iargc() /= 3) then
-     print *, "Usage: bench [niter] [msg_size] [inflight]";
+     print *, "Usage: bench [niter] [msg_size] [inflight]"
      call exit(1)
   end if
 
-  call getarg(1, arg);
+  call getarg(1, arg)
   read(arg,*) niter
-  call getarg(2, arg);
+  call getarg(2, arg)
   read(arg,*) buff_size
-  call getarg(3, arg);
+  call getarg(3, arg)
   read(arg,*) inflight
 
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
   !$omp parallel
   num_threads = omp_get_num_threads()
   !$omp end parallel
   call mpi_init_thread (MPI_THREAD_MULTIPLE, mpi_threading, mpi_err)
   if (mpi_threading /= MPI_THREAD_MULTIPLE) then
-     print *, "MPI_THREAD_MULTIPLE not supported by MPI, aborting";
+     print *, "MPI_THREAD_MULTIPLE not supported by MPI, aborting"
      call exit(1)
   end if
 #else
@@ -57,15 +55,15 @@ PROGRAM fhex_bench
 #endif
 
   ! init ghex
-  call ghex_init(num_threads, mpi_comm_world);
+  call ghex_init(num_threads, mpi_comm_world)
 
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
   !$omp parallel
 #endif
 
   call run()
 
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
   !$omp end parallel
 #endif
 
@@ -86,7 +84,7 @@ contains
 
     integer :: last_received = 0
     integer :: last_sent = 0
-    integer :: dbg = 0, sdbg = 0, rdbg = 0;
+    integer :: dbg = 0, sdbg = 0, rdbg = 0
     integer :: i = 0, last_i = 0, j = 0
     integer :: incomplete_sends = 0, send_complete = 0
 
@@ -111,13 +109,18 @@ contains
     ! obtain a communicator
     comm = ghex_comm_new()
 
-    rank        = ghex_comm_rank(comm);
-    size        = ghex_comm_size(comm);
-    thread_id   = omp_get_thread_num();
-    num_threads = omp_get_num_threads();
+    rank        = ghex_comm_rank(comm)
+    size        = ghex_comm_size(comm)
+#ifdef GHEX_USE_OPENMP
+    thread_id   = omp_get_thread_num()
+    num_threads = omp_get_num_threads()
+#else
+    thread_id   = 0
+    num_threads = 1
+#endif
     peer_rank   = modulo(rank+1, 2)
 
-#ifdef USE_OPENMP
+#ifdef GHEX_USE_OPENMP
     using_mt = .true.
 #endif
 
@@ -131,15 +134,15 @@ contains
     ! ---------------------------------------
     allocate(smsgs(inflight), rmsgs(inflight), sreqs(inflight), rreqs(inflight))
     do j = 1, inflight
-       smsgs(j) = ghex_message_new(buff_size, ALLOCATOR_STD);
-       rmsgs(j) = ghex_message_new(buff_size, ALLOCATOR_STD);
+       smsgs(j) = ghex_message_new(buff_size, GhexAllocatorHost)
+       rmsgs(j) = ghex_message_new(buff_size, GhexAllocatorHost)
        call ghex_message_zero(smsgs(j))
        call ghex_message_zero(rmsgs(j))
        call ghex_future_init(sreqs(j))
        call ghex_future_init(rreqs(j))
     end do
 
-    call ghex_comm_barrier(comm)
+    call ghex_comm_barrier(comm, GhexBarrierGlobal)
 
     if (thread_id == 0) then
        call cpu_time(ttic)
@@ -159,7 +162,7 @@ contains
           print *, rank, " total bwdt MB/s:      ", &
                (i-last_i)*size*buff_size/(toc-tic)*num_threads/1e6
           tic = toc
-          last_i = i;
+          last_i = i
        end if
 
        do j = 1, inflight
@@ -176,7 +179,7 @@ contains
        end do
     end do
 
-    call ghex_comm_barrier(comm)
+    call ghex_comm_barrier(comm, GhexBarrierGlobal)
 
     ! ---------------------------------------
     ! Timing and statistics output
@@ -193,12 +196,12 @@ contains
     ! cleanup
     ! ---------------------------------------
     do j = 1, inflight
-       call ghex_message_delete(smsgs(j))
-       call ghex_message_delete(rmsgs(j))
+       call ghex_free(smsgs(j))
+       call ghex_free(rmsgs(j))
     end do
     deallocate(smsgs, rmsgs, sreqs, rreqs)
 
-    call ghex_comm_delete(comm)
+    call ghex_free(comm)
 
   end subroutine run
 
