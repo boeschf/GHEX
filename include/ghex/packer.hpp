@@ -46,7 +46,7 @@ struct packer
                     auto          data = g.data();
                     for (const auto& fb : p1.second.field_infos)
                         fb.call_back(data + fb.offset, *fb.index_container, nullptr);
-                    send_reqs.push_back(comm.send(p1.second.buffer, p1.second.rank, p1.second.tag));
+                    send_reqs.push_back(comm.send(std::move(p1.second.buffer), p1.second.rank, p1.second.tag));
                 }
             }
         }
