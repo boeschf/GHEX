@@ -337,8 +337,8 @@ class communication_object
                     // use callbacks for unpacking
                     auto ptr = &p1.second;
                     m_recv_reqs.push_back(
-                        m_comm.recv(p1.second.buffer, p1.second.rank, p1.second.tag,
-                            [ptr](context::message_type& m, context::rank_type, context::tag_type) {
+                        m_comm.recv(std::move(p1.second.buffer), p1.second.rank, p1.second.tag,
+                            [ptr](context::message_type m, context::rank_type, context::tag_type) {
                                 device::guard g(m);
                                 packer<gpu>::unpack(*ptr, g.data());
                             }));
