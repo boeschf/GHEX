@@ -9,12 +9,15 @@ function(ghex_target_compile_options target)
     target_compile_options(${target} PRIVATE
     # flags for CXX builds
     $<${c_cxx_lang}:$<BUILD_INTERFACE:-Wall -Wextra -Wpedantic -Wno-unknown-pragmas -Wno-unused-local-typedef>>
-    $<${c_cxx_lang_clang}:$<BUILD_INTERFACE:-Wno-c++17-extensions -Wno-unused-lambda-capture>>
+    $<${c_cxx_lang_clang}:$<BUILD_INTERFACE:-Wno-c++17-extensions -Wno-unused-lambda-capture -std=c++14>>
     # flags for CUDA builds
     $<${cuda_lang}:$<BUILD_INTERFACE:-Xcompiler=-Wall -Wextra -Wno-unknown-pragmas --default-stream per-thread>>
     # flags for Fortran builds
     $<${fortran_lang}:$<BUILD_INTERFACE:-cpp -fcoarray=single>>
     $<${fortran_lang_gnu}:$<BUILD_INTERFACE:-ffree-line-length-none>>)
+    if (OOMPH_ENABLE_BARRIER)
+        target_compile_definitions(${target} PRIVATE GHEX_ENABLE_BARRIER)
+    endif()
 endfunction()
 
 function(compile_as_cuda)
