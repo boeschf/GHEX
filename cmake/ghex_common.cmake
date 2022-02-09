@@ -57,6 +57,7 @@ target_link_libraries(ghex_common INTERFACE oomph::oomph)
 # general RMA setup
 # ---------------------------------------------------------------------
 set(GHEX_NO_RMA OFF CACHE BOOL "Disable in-node RMA completely")
+set(GHEX_IGNORE_THREAD_LOCALITY OFF CACHE BOOL "Disable inter-thread RMA completely")
 
 # ---------------------------------------------------------------------
 # xpmem setup
