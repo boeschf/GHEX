@@ -67,6 +67,7 @@
 #define cudaMemcpyAsync hipMemcpyAsync
 #define cudaStreamCreateWithFlags hipStreamCreateWithFlags
 #define cudaStreamNonBlocking hipStreamNonBlocking
+#define cudaStreamAddCallback hipStreamAddCallback
 
 #else /* __HIP_PLATFORM_HCC__ */
 
