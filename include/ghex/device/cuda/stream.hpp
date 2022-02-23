@@ -25,7 +25,7 @@ namespace detail
 {
 
 template<typename Data>
-static void stream_callback(cudadStream_t s, cudaError_t status, void* user_data)
+static void stream_callback(cudaStream_t, cudaError_t status, void* user_data)
 {
     static_cast<Data*>(user_data)->notify(status);
 }
