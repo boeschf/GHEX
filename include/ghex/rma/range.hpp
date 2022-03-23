@@ -35,18 +35,20 @@ struct range
     std::unique_ptr<range_iface> m_impl;
     remote_access_guard          m_guard;
     bool                         m_on_gpu;
+    int m_device_id;
     remote_event                 m_event;
 
     range() = default;
 
     template<typename Range>
     range(Range&& r, int id, info field_info, typename local_access_guard::info info_,
-        event_info e_info_, int rank, bool on_gpu_)
+        event_info e_info_, int rank, bool on_gpu_, int device_id_)
     : m_id{id}
     , m_loc{info_.m_locality}
     , m_impl{new range_impl<std::remove_reference_t<Range>>(std::forward<Range>(r))}
     , m_guard(info_, rank)
     , m_on_gpu{on_gpu_}
+    , m_device_id{device_id_}
     , m_event{e_info_, m_on_gpu}
     {
         m_handle.init(field_info, m_loc, rank);
@@ -57,6 +59,7 @@ struct range
     range& operator=(range&&) = default;
 
     void* get_ptr() const { return m_handle.get_ptr(m_loc); }
+    int device_id() const {return m_device_id; }
 
     void start_source_epoch() { m_guard.start_source_epoch(); }
     bool try_start_source_epoch() { return m_guard.try_start_source_epoch(); }

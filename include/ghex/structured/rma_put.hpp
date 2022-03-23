@@ -231,10 +231,33 @@ put(rma_range<SourceField>& s, rma_range<TargetField>& t,
 )
 {
 #ifdef GHEX_CUDACC
-    //#ifdef GHEX_USE_GPU
-    static constexpr unsigned int block_dim = 128;
-    const unsigned int            num_blocks = (s.m_num_elements + block_dim - 1) / block_dim;
-    put_device_to_device_kernel<<<num_blocks, block_dim, 0, st>>>(s, t);
+    const auto sid = s.m_field.device_id();
+    const auto tid = t.m_field.device_id();
+    if (sid == tid)
+    {
+        //#ifdef GHEX_USE_GPU
+        static constexpr unsigned int block_dim = 128;
+        const unsigned int            num_blocks = (s.m_num_elements + block_dim - 1) / block_dim;
+        put_device_to_device_kernel<<<num_blocks, block_dim, 0, st>>>(s, t);
+    }
+    else
+    {
+    using sv_t = rma_range<SourceField>;
+    using coordinate = typename sv_t::coordinate;
+    for_loop<sv_t::dimension::value, sv_t::dimension::value, typename sv_t::layout, 1>::apply(
+        [&s, &t, &st, &sid, &tid](auto... c) {
+            GHEX_CHECK_CUDA_RESULT(
+                //cudaMemcpyAsync(t.ptr(coordinate{c...}), s.ptr(coordinate{c...}),
+                //s.m_chunk_size, cudaMemcpyHostToDevice, st)
+                cudaMemcpyPeerAsync(
+                    t.ptr(coordinate{c...}), tid,
+                    s.ptr(coordinate{c...}), sid, 
+                    s.m_chunk_size, st)
+                    );
+        },
+        s.m_begin, s.m_end);
+
+    }
 #endif
 }
 

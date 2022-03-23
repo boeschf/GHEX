@@ -24,11 +24,12 @@ namespace device
 namespace detail
 {
 
-template<typename Data>
-static void stream_callback(cudaStream_t, cudaError_t status, void* user_data)
-{
-    static_cast<Data*>(user_data)->notify(status);
-}
+//template<typename Data>
+//static void
+//stream_callback(cudaStream_t, cudaError_t status, void* user_data)
+//{
+//    static_cast<Data*>(user_data)->notify(status);
+//}
 
 } // namespace detail
 
@@ -36,37 +37,37 @@ static void stream_callback(cudaStream_t, cudaError_t status, void* user_data)
 struct stream
 {
     cudaStream_t          m_stream;
-    //cudaEvent_t           m_event;
+    cudaEvent_t           m_event;
     ghex::util::moved_bit m_moved;
 
-    struct rendezvous
-    {
-        cudaError_t m_status;
-        volatile bool m_done = false;
+    //struct rendezvous
+    //{
+    //    cudaError_t   m_status;
+    //    volatile bool m_done = false;
 
-        rendezvous(cudaStream_t s)
-        : m_status{cudaStreamAddCallback(s, detail::stream_callback<rendezvous>, this, 0)}
-        {
-            if (cudaSuccess != m_status) m_done = true;
-        }
+    //    rendezvous(cudaStream_t s)
+    //    : m_status{cudaStreamAddCallback(s, detail::stream_callback<rendezvous>, this, 0)}
+    //    {
+    //        if (cudaSuccess != m_status) m_done = true;
+    //    }
 
-        void notify(cudaError_t status) noexcept
-        {
-            m_status = status;
-            m_done = true;
-        }
+    //    void notify(cudaError_t status) noexcept
+    //    {
+    //        m_status = status;
+    //        m_done = true;
+    //    }
 
-        cudaError_t wait() noexcept
-        {
-            while(!m_done) {}
-            return m_status;
-        }
-    };
+    //    cudaError_t wait() noexcept
+    //    {
+    //        while (!m_done) {}
+    //        return m_status;
+    //    }
+    //};
 
     stream()
     {
         GHEX_CHECK_CUDA_RESULT(cudaStreamCreateWithFlags(&m_stream, cudaStreamNonBlocking));
-        //GHEX_CHECK_CUDA_RESULT(cudaEventCreateWithFlags(&m_event, cudaEventDisableTiming));
+        GHEX_CHECK_CUDA_RESULT(cudaEventCreateWithFlags(&m_event, cudaEventDisableTiming));
     }
 
     stream(const stream&) = delete;
@@ -79,7 +80,7 @@ struct stream
         if (!m_moved)
         {
             cudaStreamDestroy(m_stream);
-            //cudaEventDestroy(m_event);
+            cudaEventDestroy(m_event);
         }
     }
 
@@ -92,16 +93,14 @@ struct stream
 
     void sync()
     {
-        //GHEX_CHECK_CUDA_RESULT(cudaEventRecord(m_event, m_stream));
-        //// busy wait here
-        //GHEX_CHECK_CUDA_RESULT(cudaEventSynchronize(m_event));
-
-        rendezvous r(m_stream);
+        GHEX_CHECK_CUDA_RESULT(cudaEventRecord(m_event, m_stream));
         // busy wait here
-        GHEX_CHECK_CUDA_RESULT(r.wait());
+        GHEX_CHECK_CUDA_RESULT(cudaEventSynchronize(m_event));
+
+        //rendezvous r(m_stream);
+        //// busy wait here
+        //GHEX_CHECK_CUDA_RESULT(r.wait());
     }
-
-
 };
 } // namespace device
 

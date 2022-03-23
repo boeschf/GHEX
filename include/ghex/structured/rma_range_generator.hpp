@@ -52,25 +52,29 @@ struct rma_range_generator
         range_type                           m_local_range;
         rank_type                            m_dst;
         tag_type                             m_tag;
+        bool m_on_gpu;
+        int m_device_id;
         oomph::send_request                  m_request;
         oomph::message_buffer<unsigned char> m_archive;
-        bool                 m_on_gpu = std::is_same<typename Field::arch_type, ghex::gpu>::value;
+        //bool                 m_on_gpu = std::is_same<typename Field::arch_type, ghex::gpu>::value;
         rma::local_event     m_event;
         oomph::communicator* m_comm;
 
         template<typename IterationSpace>
         target_range(oomph::communicator& comm, const Field& f, rma::info field_info,
-            const IterationSpace& is, rank_type dst, tag_type tag, rma::locality loc)
+            const IterationSpace& is, rank_type dst, tag_type tag, rma::locality loc, int device_id)
         : m_local_guard{loc, rma::access_mode::remote}
         , m_local_range{f, is.local().first(), is.local().last() - is.local().first() + 1}
         , m_dst{dst}
         , m_tag{tag}
+        , m_on_gpu{std::is_same<typename Field::arch_type, ghex::gpu>::value}
+        , m_device_id{device_id}
         , m_archive{comm.make_buffer<unsigned char>(RangeFactory::serial_size)}
         , m_event{m_on_gpu, loc}
         , m_comm{&comm}
         {
-            RangeFactory::serialize(
-                field_info, m_local_guard, m_event, m_local_range, m_archive.data());
+            RangeFactory::serialize(field_info, m_local_guard, m_event, m_device_id, m_local_range,
+                m_archive.data());
             m_request = comm.send(m_archive, m_dst, m_tag);
         }
 
@@ -126,16 +130,18 @@ struct rma_range_generator
         rank_type                            m_src;
         tag_type                             m_tag;
         bool                                 m_on_gpu;
+        int                                  m_device_id;
         oomph::recv_request                  m_request;
         oomph::message_buffer<unsigned char> m_archive;
 
         template<typename IterationSpace>
         source_range(oomph::communicator& comm, const Field& f, const IterationSpace& is,
-            rank_type src, tag_type tag)
+            rank_type src, tag_type tag, int device_id)
         : m_local_range{f, is.local().first(), is.local().last() - is.local().first() + 1}
         , m_src{src}
         , m_tag{tag}
         , m_on_gpu{std::is_same<typename Field::arch_type, ghex::gpu>::value}
+        , m_device_id{device_id}
         , m_archive{comm.make_buffer<unsigned char>(RangeFactory::serial_size)}
         {
             m_request = comm.recv(m_archive, m_src, m_tag);
@@ -149,8 +155,8 @@ struct rma_range_generator
             m_request.wait();
             // creates a traget range
             m_remote_range = RangeFactory::deserialize(m_archive.data(), m_src, m_on_gpu);
-            RangeFactory::call_back_with_type(
-                m_remote_range, [this](auto& r) { init(r, m_remote_range); });
+            RangeFactory::call_back_with_type(m_remote_range,
+                [this](auto& r) { init(r, m_remote_range); });
             m_remote_range.end_source_epoch();
         }
 
@@ -186,6 +192,7 @@ struct rma_range_generator
         {
             using T = typename TargetRange::value_type;
             tr.m_field.set_data((T*)r.get_ptr());
+            tr.m_field.set_device_id(r.device_id());
         }
     };
 };

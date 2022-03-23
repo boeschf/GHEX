@@ -205,6 +205,7 @@ class field_descriptor<T, Arch, DomainDescriptor, ::gridtools::layout_map<Order.
   public: // member functions
     /** @brief returns the device id */
     typename arch_traits<arch_type>::device_id_type device_id() const { return m_device_id; }
+    void set_device_id(typename arch_traits<arch_type>::device_id_type did) { m_device_id = did; }
     /** @brief returns the domain */
     const domain_descriptor_type& domain() const { return m_dom; }
     /** @brief returns the domain id */

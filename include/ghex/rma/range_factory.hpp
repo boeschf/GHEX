@@ -46,7 +46,7 @@ struct range_factory
 
     static constexpr std::size_t serial_size = a16(sizeof(int)) + a16(sizeof(info)) +
                                                a16(sizeof(typename local_access_guard::info)) +
-                                               a16(sizeof(event_info)) + max_range_size::value;
+                                               a16(sizeof(event_info)) + a16(sizeof(int)) +max_range_size::value;
 
     //template<typename Range>
     //static std::vector<unsigned char> serialize(
@@ -60,22 +60,33 @@ struct range_factory
     static range deserialize(unsigned char* buffer, int rank, bool on_gpu)
     {
         int id;
-        std::memcpy(&id, buffer, sizeof(int));
-        buffer += a16(sizeof(int));
+        //std::memcpy(&id, buffer, sizeof(int));
+        //buffer += a16(sizeof(int));
+        buffer = read(buffer, id);
+
         info field_info;
-        std::memcpy(&field_info, buffer, sizeof(field_info));
-        buffer += a16(sizeof(field_info));
+        //std::memcpy(&field_info, buffer, sizeof(field_info));
+        //buffer += a16(sizeof(field_info));
+        buffer = read(buffer, field_info);
+
         typename local_access_guard::info info_;
-        std::memcpy(&info_, buffer, sizeof(typename local_access_guard::info));
-        buffer += a16(sizeof(typename local_access_guard::info));
+        //std::memcpy(&info_, buffer, sizeof(typename local_access_guard::info));
+        //buffer += a16(sizeof(typename local_access_guard::info));
+        buffer = read(buffer, info_);
+
         event_info e_info_;
-        std::memcpy(&e_info_, buffer, sizeof(event_info));
-        buffer += a16(sizeof(event_info));
+        //std::memcpy(&e_info_, buffer, sizeof(event_info));
+        //buffer += a16(sizeof(event_info));
+        buffer = read(buffer, e_info_);
+
+        int device_id;
+        buffer = read(buffer, device_id);
+
         return boost::mp11::mp_with_index<boost::mp11::mp_size<RangeList>::value>(
-            id, [buffer, field_info, info_, e_info_, rank, on_gpu](auto Id) {
+            id, [buffer, field_info, info_, e_info_, rank, on_gpu, device_id](auto Id) {
                 using range_t = boost::mp11::mp_at<RangeList, decltype(Id)>;
                 return range(std::move(*reinterpret_cast<range_t*>(buffer)), decltype(Id)::value,
-                    field_info, info_, e_info_, rank, on_gpu);
+                    field_info, info_, e_info_, rank, on_gpu, device_id);
             });
     }
 
@@ -92,25 +103,53 @@ struct range_factory
 
   //private:
     template<typename Range>
-    static void serialize(info field_info, local_access_guard& g, local_event& e, const Range& r,
+    static void serialize(info field_info, local_access_guard& g, local_event& e, int device_id, const Range& r,
         unsigned char* buffer)
     {
         static_assert(
             boost::mp11::mp_set_contains<RangeList, Range>::value, "range type not registered");
         using id = boost::mp11::mp_find<RangeList, Range>;
+
         const int m_id = id::value;
-        std::memcpy(buffer, &m_id, sizeof(int));
-        buffer += a16(sizeof(int));
-        std::memcpy(buffer, &field_info, sizeof(field_info));
-        buffer += a16(sizeof(field_info));
+        //std::memcpy(buffer, &m_id, sizeof(int));
+        //buffer += a16(sizeof(int));
+        buffer = write(buffer, m_id);
+
+        //std::memcpy(buffer, &field_info, sizeof(field_info));
+        //buffer += a16(sizeof(field_info));
+        buffer = write(buffer, field_info);
+
         auto info_ = g.get_info();
-        std::memcpy(buffer, &info_, sizeof(typename local_access_guard::info));
-        buffer += a16(sizeof(typename local_access_guard::info));
+        //std::memcpy(buffer, &info_, sizeof(typename local_access_guard::info));
+        //buffer += a16(sizeof(typename local_access_guard::info));
+        buffer = write(buffer, info_);
+
         auto e_info_ = e.get_info();
-        std::memcpy(buffer, &e_info_, sizeof(event_info));
-        buffer += a16(sizeof(event_info));
+        //std::memcpy(buffer, &e_info_, sizeof(event_info));
+        //buffer += a16(sizeof(event_info));
+        buffer = write(buffer, e_info_);
+
+        //std::memcpy(buffer, &device_id, sizeof(int));
+        //buffer += a16(sizeof(int));
+        buffer = write(buffer, device_id);
+
         std::memcpy(buffer, &r, sizeof(Range));
     }
+
+    private:
+    template<typename T>
+    static unsigned char* write(unsigned char* buffer, T const& x)
+    {
+        std::memcpy(buffer, &x, sizeof(T));
+        return buffer + a16(sizeof(T));
+    }
+    template<typename T>
+    static unsigned char* read(unsigned char* buffer, T& x)
+    {
+        std::memcpy(&x, buffer, sizeof(T));
+        return buffer + a16(sizeof(T));
+    }
+
 };
 
 } // namespace rma
