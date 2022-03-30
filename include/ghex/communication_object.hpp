@@ -499,12 +499,18 @@ class communication_object
         if (!m_valid) return true;
         if (m_comm.is_ready())
         {
+#ifdef GHEX_CUDACC
+            sync_streams();
+#endif
             clear();
             return true;
         }
         m_comm.progress();
         if (m_comm.is_ready())
         {
+#ifdef GHEX_CUDACC
+            sync_streams();
+#endif
             clear();
             return true;
         }
@@ -516,8 +522,30 @@ class communication_object
         if (!m_valid) return;
         // wait for data to arrive (unpack callback will be invoked)
         m_comm.wait_all();
+#ifdef GHEX_CUDACC
+        sync_streams();
+#endif
         clear();
     }
+
+#ifdef GHEX_CUDACC
+  private: // synchronize (unpacking) streams
+    void sync_streams()
+    {
+        using gpu_mem_t = buffer_memory<gpu>;
+        auto& m = std::get<gpu_mem_t>(m_mem);
+        for (auto& p0 : m.recv_memory)
+        {
+            for (auto& p1: p0.second)
+            {
+                if (p1.second.size > 0u)
+                {
+                    p1.second.m_stream.sync();
+                }
+            }
+        }
+    }
+#endif
 
   private: // reset
     // clear the internal flags so that a new exchange can be started
