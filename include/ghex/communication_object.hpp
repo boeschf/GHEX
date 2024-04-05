@@ -233,7 +233,7 @@ class communication_object
     template<typename... Archs, typename... Fields>
     [[nodiscard]] handle_type exchange(buffer_info_type<Archs, Fields>... buffer_infos)
     {
-        exchange_impl(buffer_infos...);
+        exchange_impl(std::move(buffer_infos)...);
         post_recvs();
         pack();
         return {this};
@@ -317,7 +317,7 @@ class communication_object
     exchange_u(Iterator first, Iterator last)
     {
         using gpu_mem_t = buffer_memory<gpu>;
-        using field_type = std::remove_reference_t<decltype(first->get_field())>;
+        using field_type = typename decltype(first->get_field())::field_type;
         using value_type = typename field_type::value_type;
         exchange_impl(std::make_pair(first, last));
         // post recvs
@@ -379,9 +379,9 @@ class communication_object
             auto mem = &(std::get<buffer_memory<arch_t>>(m_mem));
             for (auto it = iter_pair.first; it != iter_pair.second; ++it)
             {
-                auto       field_ptr = &(it->get_field());
-                auto       tag_offset = pat_ptr_map[&(it->get_pattern_container())];
-                const auto my_dom_id = it->get_field().domain_id();
+                auto field_ptr = it->get_field();
+                auto tag_offset = pat_ptr_map[&(it->get_pattern_container())];
+                const auto my_dom_id = field_ptr->domain_id();
                 allocate<arch_t, value_t>(
                     mem, it->get_pattern(), field_ptr, my_dom_id, it->device_id(), tag_offset);
             }
@@ -423,8 +423,8 @@ class communication_object
         for_each(memory_tuple, buffer_info_tuple, [this, &tag_offsets](std::size_t i, auto mem, auto bi) {
             using arch_type = typename std::remove_reference_t<decltype(*mem)>::arch_type;
             using value_type = typename std::remove_reference_t<decltype(*bi)>::value_type;
-            auto                 field_ptr = &(bi->get_field());
-            const domain_id_type my_dom_id = bi->get_field().domain_id();
+            auto field_ptr = bi->get_field();
+            const domain_id_type my_dom_id = field_ptr->domain_id();
             allocate<arch_type, value_type>(
                 mem, bi->get_pattern(), field_ptr, my_dom_id, bi->device_id(), tag_offsets[i]);
         });
@@ -434,24 +434,23 @@ class communication_object
     {
         for_each(m_mem, [this](std::size_t, auto& m) {
             using arch_type = typename std::remove_reference_t<decltype(m)>::arch_type;
-            for (auto& p0 : m.recv_memory)
+            for (auto& [device_id, recv_buffer_map] : m.recv_memory)
             {
-                const auto device_id = p0.first;
-                for (auto& p1 : p0.second)
+                for (auto& [did_pair, recv_buffer] : recv_buffer_map)
                 {
-                    if (p1.second.size > 0u)
+                    if (recv_buffer.size > 0u)
                     {
-                        if (!p1.second.buffer || p1.second.buffer.size() != p1.second.size
+                        if (!recv_buffer.buffer || recv_buffer.buffer.size() != recv_buffer.size
 #if defined(GHEX_USE_GPU) || defined(GHEX_GPU_MODE_EMULATE)
-                            || p1.second.buffer.device_id() != device_id
+                            || recv_buffer.buffer.device_id() != device_id
 #endif
                         )
-                            p1.second.buffer = arch_traits<arch_type>::make_message(
-                                m_comm, p1.second.size, device_id);
-                        auto ptr = &p1.second;
+                            recv_buffer.buffer = arch_traits<arch_type>::make_message(
+                                m_comm, recv_buffer.size, device_id);
+                        auto ptr = &recv_buffer;
                         // use callbacks for unpacking
-                        m_recv_reqs.push_back(m_comm.recv(p1.second.buffer, p1.second.rank,
-                            p1.second.tag,
+                        m_recv_reqs.push_back(m_comm.recv(recv_buffer.buffer, recv_buffer.rank,
+                            recv_buffer.tag,
                             [ptr](context::message_type& m, context::rank_type, context::tag_type) {
                                 device::guard g(m);
                                 packer<arch_type>::unpack(*ptr, g.data());
@@ -556,7 +555,7 @@ class communication_object
 
     //  private: // allocation member functions
     template<typename Arch, typename T, typename Memory, typename Field, typename O>
-    void allocate(Memory& mem, const pattern_type& pattern, Field* field_ptr, domain_id_type dom_id,
+    void allocate(Memory& mem, const pattern_type& pattern, shared_field_ptr<Field> field_ptr, domain_id_type dom_id,
         typename arch_traits<Arch>::device_id_type device_id, O tag_offset)
     {
         allocate<Arch, T, typename buffer_memory<Arch>::recv_buffer_type>(
@@ -564,28 +563,28 @@ class communication_object
             [field_ptr](const void* buffer, const index_container_type& c, void* arg) {
                 field_ptr->unpack(reinterpret_cast<const T*>(buffer), c, arg);
             },
-            dom_id, tag_offset, true, field_ptr);
+            dom_id, tag_offset, true, field_ptr.get());
         allocate<Arch, T, typename buffer_memory<Arch>::send_buffer_type>(
             mem->send_memory[device_id], pattern.send_halos(),
             [field_ptr](void* buffer, const index_container_type& c, void* arg) {
                 field_ptr->pack(reinterpret_cast<T*>(buffer), c, arg);
             },
-            dom_id, tag_offset, false, field_ptr);
+            dom_id, tag_offset, false, field_ptr.get());
     }
 
     // compute memory requirements to be allocated on the device
     template<typename Arch, typename ValueType, typename BufferType, typename Memory,
         typename Halos, typename Function, typename Field = void>
-    void allocate(Memory& memory, const Halos& halos, Function&& func, domain_id_type my_dom_id,
-        int tag_offset, bool receive, Field* field_ptr = nullptr)
+    void allocate(Memory& memory, const Halos& halos, Function func, domain_id_type my_dom_id,
+        int tag_offset, bool receive, Field* field_ptr)
     {
-        for (const auto& p_id_c : halos)
+        for (const auto& [e_did, index_container] : halos)
         {
             const auto num_elements =
-                pattern_type::num_elements(p_id_c.second) * field_ptr->num_components();
+                pattern_type::num_elements(index_container) * field_ptr->num_components();
             if (num_elements < 1) continue;
-            const auto     remote_rank = p_id_c.first.mpi_rank;
-            const auto     remote_dom_id = p_id_c.first.id;
+            const auto     remote_rank = e_did.mpi_rank;
+            const auto     remote_dom_id = e_did.id;
             domain_id_type left, right;
             if (receive)
             {
@@ -603,23 +602,24 @@ class communication_object
             {
                 it = memory
                          .insert(std::make_pair(
-                             d_p, BufferType{remote_rank, p_id_c.first.tag + tag_offset, {}, 0,
+                             d_p, BufferType{remote_rank, e_did.tag + tag_offset, {}, 0,
                                       std::vector<typename BufferType::field_info_type>(), {}}))
                          .first;
             }
-            else if (it->second.size == 0)
+            auto& buffer = it->second;
+            if (buffer.size == 0)
             {
-                it->second.rank = remote_rank;
-                it->second.tag = p_id_c.first.tag + tag_offset;
-                it->second.field_infos.resize(0);
+                buffer.rank = remote_rank;
+                buffer.tag = e_did.tag + tag_offset;
+                buffer.field_infos.resize(0);
             }
-            const auto prev_size = it->second.size;
+            const auto prev_size = buffer.size;
             const auto padding =
                 ((prev_size + alignof(ValueType) - 1) / alignof(ValueType)) * alignof(ValueType) -
                 prev_size;
-            it->second.field_infos.push_back(typename BufferType::field_info_type{
-                std::forward<Function>(func), &p_id_c.second, prev_size + padding, field_ptr});
-            it->second.size += padding + static_cast<std::size_t>(num_elements) * sizeof(ValueType);
+            buffer.field_infos.push_back(typename BufferType::field_info_type{
+                func, &index_container, prev_size + padding, field_ptr});
+            buffer.size += padding + static_cast<std::size_t>(num_elements) * sizeof(ValueType);
         }
     }
 };
@@ -648,8 +648,8 @@ communication_handle<GridType, DomainIdType>::progress()
 }
 
 /** @brief creates a communication object based on the pattern type
-          * @tparam PatternContainer pattern type
-          * @return communication object */
+  * @tparam PatternContainer pattern type
+  * @return communication object */
 template<typename PatternContainer>
 auto
 make_communication_object(context& c)

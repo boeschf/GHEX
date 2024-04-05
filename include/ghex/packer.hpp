@@ -31,21 +31,20 @@ struct packer
     template<typename Map, typename Requests, typename Communicator>
     static void pack(Map& map, Requests& send_reqs, Communicator& comm)
     {
-        for (auto& p0 : map.send_memory)
+        for (auto& [device_id, send_buffer_map] : map.send_memory)
         {
-            const auto device_id = p0.first;
-            for (auto& p1 : p0.second)
+            for (auto& [did_pair, send_buffer] : send_buffer_map)
             {
-                if (p1.second.size > 0u)
+                if (send_buffer.size > 0u)
                 {
-                    if (!p1.second.buffer || p1.second.buffer.size() != p1.second.size)
-                        p1.second.buffer =
-                            arch_traits<Arch>::make_message(comm, p1.second.size, device_id);
-                    device::guard g(p1.second.buffer);
+                    if (!send_buffer.buffer || send_buffer.buffer.size() != send_buffer.size)
+                        send_buffer.buffer =
+                            arch_traits<Arch>::make_message(comm, send_buffer.size, device_id);
+                    device::guard g(send_buffer.buffer);
                     auto          data = g.data();
-                    for (const auto& fb : p1.second.field_infos)
+                    for (const auto& fb : send_buffer.field_infos)
                         fb.call_back(data + fb.offset, *fb.index_container, nullptr);
-                    send_reqs.push_back(comm.send(p1.second.buffer, p1.second.rank, p1.second.tag));
+                    send_reqs.push_back(comm.send(send_buffer.buffer, send_buffer.rank, send_buffer.tag));
                 }
             }
         }

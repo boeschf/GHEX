@@ -11,6 +11,9 @@
 
 #include <ghex/arch_traits.hpp>
 #include <vector>
+#include <functional>
+#include <variant>
+#include <memory>
 
 namespace ghex
 {
@@ -19,6 +22,30 @@ template<typename GridType, typename DomainIdType>
 class pattern;
 template<typename GridType, typename DomainIdType>
 class pattern_container;
+
+template<typename Field>
+class shared_field_ptr {
+  public:
+    using field_type = Field;
+
+  private:
+    std::variant<field_type*, std::shared_ptr<field_type>> m_field = nullptr;
+
+  public:
+    shared_field_ptr() noexcept : m_field{nullptr} {}
+    shared_field_ptr(std::nullptr_t) noexcept : m_field{nullptr} {}
+    shared_field_ptr(field_type* ptr) noexcept : m_field{ptr} {}
+    shared_field_ptr(field_type f) noexcept : m_field{std::make_shared<field_type>(std::move(f))} {}
+    shared_field_ptr(shared_field_ptr&&) noexcept = default;
+    shared_field_ptr(const shared_field_ptr&) noexcept = default;
+    shared_field_ptr& operator=(std::nullptr_t) noexcept { m_field.template emplace<field_type*>(nullptr); return *this; }
+    shared_field_ptr& operator=(shared_field_ptr&&) noexcept = default;
+    shared_field_ptr& operator=(const shared_field_ptr&) noexcept = default;
+
+    field_type* get() const noexcept { return m_field.index() ? std::get<1>(m_field).get() : std::get<0>(m_field); }
+    field_type& operator*() const noexcept { return *get(); }
+    field_type* operator->() const noexcept { return get(); }
+};
 
 // forward declaration
 template<typename Pattern, typename Arch, typename Field>
@@ -44,9 +71,23 @@ struct buffer_info<pattern<GridType, DomainIdType>, Arch, Field>
     friend class pattern<GridType, DomainIdType>;
 
   private: // private ctor
-    buffer_info(const pattern_type& p, field_type& field, device_id_type id) noexcept
+    buffer_info(const pattern_type& p, field_type field, device_id_type id) noexcept
     : m_p{&p}
-    , m_field{&field}
+    , m_field{std::move(field)}
+    , m_id{id}
+    {
+    }
+
+    buffer_info(const pattern_type& p, field_type* field_ptr, device_id_type id) noexcept
+    : m_p{&p}
+    , m_field{field_ptr}
+    , m_id{id}
+    {
+    }
+
+    buffer_info(const pattern_type& p, shared_field_ptr<field_type> field_ptr, device_id_type id) noexcept
+    : m_p{&p}
+    , m_field{std::move(field_ptr)}
     , m_id{id}
     {
     }
@@ -58,16 +99,13 @@ struct buffer_info<pattern<GridType, DomainIdType>, Arch, Field>
   public: // member functions
     device_id_type                device_id() const noexcept { return m_id; }
     const pattern_type&           get_pattern() const noexcept { return *m_p; }
-    const pattern_container_type& get_pattern_container() const noexcept
-    {
-        return m_p->container();
-    }
-    field_type& get_field() noexcept { return *m_field; }
+    const pattern_container_type& get_pattern_container() const noexcept { return m_p->container(); }
+    auto                          get_field() noexcept { return m_field; }
 
   private: // members
-    const pattern_type* m_p;
-    field_type*         m_field;
-    device_id_type      m_id;
+    const pattern_type*          m_p;
+    shared_field_ptr<field_type> m_field;
+    device_id_type               m_id;
 };
 
 template<typename T>

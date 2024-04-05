@@ -314,16 +314,16 @@ class bulk_communication_object
     template<typename Field>
     struct field_container
     {
-        Field              m_field;
-        rma::local_handle& m_local_handle;
-        pattern_type&      m_remote_pattern;
-        pattern_type&      m_local_pattern;
+        shared_field_ptr<Field> m_field;
+        rma::local_handle&      m_local_handle;
+        pattern_type&           m_remote_pattern;
+        pattern_type&           m_local_pattern;
 
         // construct from field, pattern and the maps storing rma handles, and patterns
-        field_container(communicator_type& comm, const Field& f, const pattern_type& pattern,
+        field_container(communicator_type& comm, shared_field_ptr<Field> f, const pattern_type& pattern,
             local_handle_map& l_handle_map, pattern_map& local_map, pattern_map& remote_map)
-        : m_field{f}
-        , m_local_handle(l_handle_map.insert(std::make_pair((void*)(f.data()), rma::local_handle{}))
+        : m_field{std::move(f)}
+        , m_local_handle(l_handle_map.insert(std::make_pair((void*)(m_field->data()), rma::local_handle{}))
                              .first->second)
         , m_remote_pattern(remote_map.insert(std::make_pair(&pattern, pattern)).first->second)
         , m_local_pattern(local_map.insert(std::make_pair(&pattern, pattern)).first->second)
@@ -331,7 +331,7 @@ class bulk_communication_object
             // initialize the remote handle - this will effectively publish the rma pointers
             // will do nothing if already initialized
             m_local_handle.init(
-                f.data(), f.bytes(), std::is_same<typename Field::arch_type, gpu>::value);
+                m_field->data(), m_field->bytes(), std::is_same<typename Field::arch_type, gpu>::value);
 
             // prepare local and remote patterns
             // =================================
@@ -482,16 +482,16 @@ class bulk_communication_object
         s_range.m_ranges.resize(s_range.m_ranges.size() + 1);
         t_range.m_ranges.resize(t_range.m_ranges.size() + 1);
 
-        auto& f = f_cont.back().m_field;
-        auto  field_info = f_cont.back().m_local_handle.get_info();
+        auto f_ptr = f_cont.back().m_field.get();
+        auto field_info = f_cont.back().m_local_handle.get_info();
         // loop over patterns
         for (auto& p : f_cont.back().m_local_pattern)
         {
             // check if field has the right domain
-            if (f.domain_id() == p.domain_id())
+            if (f_ptr->domain_id() == p.domain_id())
             {
 #ifdef GHEX_BULK_UNIQUE_TAGS
-                auto m_it = m_tag_map.insert(std::pair<int, int>(f.domain_id(), 0)).first;
+                auto m_it = m_tag_map.insert(std::pair<int, int>(f_ptr->domain_id(), 0)).first;
 #endif
                 // loop over halos and set up source ranges
                 for (auto h_it = p.send_halos().begin(); h_it != p.send_halos().end(); ++h_it)
@@ -501,7 +501,7 @@ class bulk_communication_object
                     {
                         const auto& c = *it;
                         s_range.m_ranges.back().emplace_back(
-                            m_co->communicator(), f, c, h_it->first.mpi_rank
+                            m_co->communicator(), *f_ptr, c, h_it->first.mpi_rank
 #ifdef GHEX_BULK_UNIQUE_TAGS
                             ,
                             (m_it->second + h_it->first.tag + 1) * 10000 + q
@@ -522,7 +522,7 @@ class bulk_communication_object
                         const auto local =
                             rma::is_local(m_co->communicator(), h_it->first.mpi_rank);
                         const auto& c = *it;
-                        t_range.m_ranges.back().emplace_back(m_co->communicator(), f, field_info, c,
+                        t_range.m_ranges.back().emplace_back(m_co->communicator(), *f_ptr, field_info, c,
                             h_it->first.mpi_rank
 #ifdef GHEX_BULK_UNIQUE_TAGS
                             ,
@@ -551,7 +551,7 @@ class bulk_communication_object
     template<typename... F>
     void add_fields(buffer_info_type<F>... bis)
     {
-        auto bis_tp = std::make_tuple(bis...);
+        auto bis_tp = std::make_tuple(std::move(bis)...);
         for (std::size_t i = 0; i < sizeof...(F); ++i)
         {
             boost::mp11::mp_with_index<sizeof...(F)>(i, [this, &bis_tp](auto i) {
@@ -581,7 +581,9 @@ class bulk_communication_object
                 auto& bi_cont = std::get<I::value>(m_buffer_info_container_tuple);
                 auto& f_cont = std::get<I::value>(m_field_container_tuple);
                 // add remote exchange
-                for (auto& f : f_cont) bi_cont.push_back(f.m_remote_pattern(f.m_field));
+                for (auto& f : f_cont) {
+                    bi_cont.push_back(f.m_remote_pattern(f.m_field));
+                }
             });
         }
         for (std::size_t i = 0; i < boost::mp11::mp_size<field_types>::value; ++i)

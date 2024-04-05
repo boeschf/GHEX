@@ -86,11 +86,26 @@ class pattern_container
       * @param field field instance
       * @return lightweight buffer_info object. Attention: holds references to field and pattern! */
     template<typename Field>
-    buffer_info<value_type, typename Field::arch_type, Field> operator()(Field& field) const
+    buffer_info<value_type, typename Field::arch_type, Field> operator()(Field field) const
     {
+        return get_pattern(field.domain_id())(std::move(field));
+    }
+    template<typename Field>
+    buffer_info<value_type, typename Field::arch_type, Field> operator()(Field* field) const
+    {
+        return get_pattern(field->domain_id())(field);
+    }
+    template<typename Field>
+    buffer_info<value_type, typename Field::arch_type, Field> operator()(shared_field_ptr<Field> field) const
+    {
+        return get_pattern(field->domain_id())(std::move(field));
+    }
+
+  private:
+    auto& get_pattern(domain_id_type d) const {
         // linear search here
         for (auto& p : m_patterns)
-            if (p.domain_id() == field.domain_id()) return p(field);
+            if (p.domain_id() == d) return p;
         throw std::runtime_error("field incompatible with available domains!");
     }
 

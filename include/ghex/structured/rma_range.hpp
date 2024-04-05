@@ -94,8 +94,8 @@ struct rma_range
     size_type  m_chunk_size_;
 
     template<typename Array>
-    rma_range(const Field& f, const Array& offset, const Array& extent)
-    : m_field(f)
+    rma_range(Field f, const Array& offset, const Array& extent)
+    : m_field(std::move(f))
     {
         static constexpr auto I = layout::find(dimension::value - 1);
         m_size = 1;
@@ -111,7 +111,7 @@ struct rma_range
         {
             unsigned int i = dimension::value - 1;
             m_offset[i] = 0;
-            m_extent[i] = f.num_components();
+            m_extent[i] = m_field.num_components();
             m_begin[i] = 0;
             m_end[i] = m_extent[i] - 1;
             m_size *= m_extent[i];

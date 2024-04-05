@@ -199,9 +199,21 @@ class pattern<structured::detail::grid<CoordinateArrayType>, DomainIdType>
       * @param field field instance
       * @return buffer_info object which holds pointers to the field and the pattern */
     template<typename Field>
-    buffer_info<pattern, typename Field::arch_type, Field> operator()(Field& field) const
+    buffer_info<pattern, typename Field::arch_type, Field> operator()(Field field) const
     {
-        return {*this, field, field.device_id()};
+        const auto device_id = field.device_id();
+        return {*this, std::move(field), device_id};
+    }
+    template<typename Field>
+    buffer_info<pattern, typename Field::arch_type, Field> operator()(Field* field_ptr) const
+    {
+        return {*this, field_ptr, field_ptr->device_id()};
+    }
+    template<typename Field>
+    buffer_info<pattern, typename Field::arch_type, Field> operator()(shared_field_ptr<Field> field_ptr) const
+    {
+        const auto device_id = field_ptr->device_id();
+        return {*this, std::move(field_ptr), device_id};
     }
 };
 

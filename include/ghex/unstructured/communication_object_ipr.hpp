@@ -99,14 +99,14 @@ class communication_object_ipr<data_descriptor<Arch, DomainIdType, IndexType, T>
     };
 
   private:
-    context&                m_context;
-    communicator_type       m_comm;
-    device_id_type          m_device_id;
-    field_type              m_field;
-    std::vector<halo>       m_send_halos;
-    std::vector<halo>       m_recv_halos;
-    std::unique_ptr<status> m_status;
-    device::stream          m_stream;
+    context&                     m_context;
+    communicator_type            m_comm;
+    device_id_type               m_device_id;
+    shared_field_ptr<field_type> m_field;
+    std::vector<halo>            m_send_halos;
+    std::vector<halo>            m_recv_halos;
+    std::unique_ptr<status>      m_status;
+    device::stream               m_stream;
 
   public:
     communication_object_ipr(context& c, buffer_info_type bi)
@@ -125,7 +125,7 @@ class communication_object_ipr<data_descriptor<Arch, DomainIdType, IndexType, T>
             index_container_type const& index_container = send_halo.second;
             auto const&                 iteration_space = index_container[0];
             std::size_t const           size =
-                iteration_space.size() * m_field.num_components() * sizeof(value_type);
+                iteration_space.size() * m_field->num_components() * sizeof(value_type);
 
             m_send_halos.push_back(halo{extended_id.mpi_rank, extended_id.tag, index_container,
                 arch_traits<arch_type>::make_message(m_comm, size, m_device_id)});
@@ -136,12 +136,12 @@ class communication_object_ipr<data_descriptor<Arch, DomainIdType, IndexType, T>
             index_container_type const& index_container = recv_halo.second;
             auto const&                 iteration_space = index_container[0];
             std::size_t const           size =
-                iteration_space.size() * m_field.num_components() * sizeof(value_type);
+                iteration_space.size() * m_field->num_components() * sizeof(value_type);
             index_vector_type const& index_vector = iteration_space.local_indices();
 
             m_recv_halos.push_back(halo{extended_id.mpi_rank, extended_id.tag, index_container,
                 arch_traits<arch_type>::make_message(m_comm,
-                    m_field.get_address_at(index_vector.front(), 0), size, m_device_id)});
+                    m_field->get_address_at(index_vector.front(), 0), size, m_device_id)});
         }
 
         m_status = std::unique_ptr<status>(
@@ -172,7 +172,7 @@ class communication_object_ipr<data_descriptor<Arch, DomainIdType, IndexType, T>
         {
             device::guard g(h.message);
             auto          data = g.data();
-            m_field.pack(reinterpret_cast<T*>(data), h.index_container,
+            m_field->pack(reinterpret_cast<T*>(data), h.index_container,
                 std::is_same<arch_type, cpu>::value ? nullptr : &m_stream);
             m_stream.sync();
             m_comm.send(h.message, h.remote_rank, h.tag,

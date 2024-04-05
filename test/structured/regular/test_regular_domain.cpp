@@ -27,6 +27,7 @@
 #include <vector>
 #include <thread>
 #include <future>
+#include <iostream>
 
 // this class sets up the decomposition, fields and patterns for the halo exchange,
 // initializes the values before the exchange and can check for correctness of the exchange

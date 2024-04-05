@@ -63,17 +63,17 @@ register_communication_object(pybind11::module& m)
                             pybind11::keep_alive<0, 1>())
                         .def(
                             "exchange",
-                            [](communication_object_shim& co, buffer_info_type& b)
+                            [](communication_object_shim& co, buffer_info_type b)
                             { return co.exchange(b); },
                             pybind11::keep_alive<0, 1>())
                         .def(
                             "exchange",
-                            [](communication_object_shim& co, buffer_info_type& b0, buffer_info_type& b1)
+                            [](communication_object_shim& co, buffer_info_type b0, buffer_info_type b1)
                             { return co.exchange(b0, b1); },
                             pybind11::keep_alive<0, 1>())
                         .def(
                             "exchange",
-                            [](communication_object_shim& co, buffer_info_type& b0, buffer_info_type& b1, buffer_info_type& b2)
+                            [](communication_object_shim& co, buffer_info_type b0, buffer_info_type b1, buffer_info_type b2)
                             { return co.exchange(b0, b1, b2); },
                             pybind11::keep_alive<0, 1>());
                 });

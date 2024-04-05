@@ -136,12 +136,12 @@ class field_descriptor<T, Arch, DomainDescriptor, ::gridtools::layout_map<Order.
         }
     };
 
-  protected:                            // members
-    domain_descriptor_type m_dom;       ///< domain descriptor
-    value_type*            m_data;      ///< pointer to data
-    coordinate_type        m_dom_first; ///< global coordinate of first domain cell
-    coordinate_type        m_offsets; ///< offset from beginning of memory to the first domain cell
-    coordinate_type        m_extents; ///< extent of memory (including halos)
+  protected: // members
+    domain_descriptor_type m_dom;             ///< domain descriptor
+    value_type*            m_data;            ///< pointer to data
+    coordinate_type        m_dom_first;       ///< global coordinate of first domain cell
+    coordinate_type        m_offsets;         ///< offset from beginning of memory to the first domain cell
+    coordinate_type        m_extents;         ///< extent of memory (including halos)
     size_type              m_num_components;  ///< number of components
     bool                   m_is_vector_field; ///< true if this field describes a vector field
     device_id_type         m_device_id;       ///< device id

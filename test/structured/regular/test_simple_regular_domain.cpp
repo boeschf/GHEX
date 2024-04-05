@@ -200,7 +200,7 @@ run(context& ctxt, const Pattern& pattern, const SPattern& spattern, const Domai
     co.exchange(pattern(field)).wait();
 #endif
 
-        // check field
+    // check field
 #if defined(GHEX_USE_GPU) || defined(GHEX_GPU_MODE_EMULATE)
     if (thread_id != 0) raw_field.clone_to_host();
 #endif

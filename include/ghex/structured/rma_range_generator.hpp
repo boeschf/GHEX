@@ -58,10 +58,10 @@ struct rma_range_generator
         oomph::communicator* m_comm;
 
         template<typename IterationSpace>
-        target_range(oomph::communicator& comm, const Field& f, rma::info field_info,
+        target_range(oomph::communicator& comm, Field f, rma::info field_info,
             const IterationSpace& is, rank_type dst, tag_type tag, rma::locality loc)
         : m_local_guard{loc, rma::access_mode::remote}
-        , m_local_range{f, is.local().first(), is.local().last() - is.local().first() + 1}
+        , m_local_range{std::move(f), is.local().first(), is.local().last() - is.local().first() + 1}
         , m_dst{dst}
         , m_tag{tag}
         , m_archive{comm.make_buffer<unsigned char>(RangeFactory::serial_size)}
@@ -129,9 +129,9 @@ struct rma_range_generator
         oomph::message_buffer<unsigned char> m_archive;
 
         template<typename IterationSpace>
-        source_range(oomph::communicator& comm, const Field& f, const IterationSpace& is,
+        source_range(oomph::communicator& comm, Field f, const IterationSpace& is,
             rank_type src, tag_type tag)
-        : m_local_range{f, is.local().first(), is.local().last() - is.local().first() + 1}
+        : m_local_range{std::move(f), is.local().first(), is.local().last() - is.local().first() + 1}
         , m_src{src}
         , m_tag{tag}
         , m_on_gpu{std::is_same<typename Field::arch_type, ghex::gpu>::value}
