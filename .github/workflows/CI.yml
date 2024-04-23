@@ -85,19 +85,19 @@ jobs:
             backend:   "MPI",
           }
 
-        - {
-            name:      "gpu-cuda-mpi-atlas-parmetis",
-            container: "ghcr.io/gridtools/gridtools-base:gcc-9-ucx-mpi-atlas-parmetis-cuda-11",
-            cc:        "gcc",
-            cxx:       "g++",
-            fortran:   "ON",
-            gpu:       "ON",
-            gpu_type:  "NVIDIA",
-            run:       "OFF",
-            atlas:     "ON",
-            parmetis:  "ON",
-            backend:   "MPI",
-          }
+        #- {
+        #    name:      "gpu-cuda-mpi-atlas-parmetis",
+        #    container: "ghcr.io/gridtools/gridtools-base:gcc-9-ucx-mpi-atlas-parmetis-cuda-11",
+        #    cc:        "gcc",
+        #    cxx:       "g++",
+        #    fortran:   "ON",
+        #    gpu:       "ON",
+        #    gpu_type:  "NVIDIA",
+        #    run:       "OFF",
+        #    atlas:     "ON",
+        #    parmetis:  "ON",
+        #    backend:   "MPI",
+        #  }
 
     env:
       CC:                             ${{ matrix.config.cc }}

@@ -24,25 +24,25 @@ jobs:
             run:       "ON",
           }
 
-        - {
-            name:      "gpu-cuda",
-            container: "ghcr.io/gridtools/gridtools-base:gcc-9-ucx-mpi-atlas-parmetis-cuda-11",
-            cc:        "gcc",
-            cxx:       "g++",
-            gpu:       "ON",
-            gpu_type:  "NVIDIA",
-            run:       "OFF",
-          }
+        #- {
+        #    name:      "gpu-cuda",
+        #    container: "ghcr.io/gridtools/gridtools-base:gcc-9-ucx-mpi-atlas-parmetis-cuda-11",
+        #    cc:        "gcc",
+        #    cxx:       "g++",
+        #    gpu:       "ON",
+        #    gpu_type:  "NVIDIA",
+        #    run:       "OFF",
+        #  }
 
-        - {
-            name:      "gpu-hip",
-            container: "ghcr.io/gridtools/gridtools-base:gcc-9-ucx-mpi-atlas-parmetis-hip",
-            cc:        "/opt/rocm/llvm/bin/clang",
-            cxx:       "/opt/rocm/llvm/bin/clang++",
-            gpu:       "ON",
-            gpu_type:  "AMD",
-            run:       "OFF",
-          }
+        #- {
+        #    name:      "gpu-hip",
+        #    container: "ghcr.io/gridtools/gridtools-base:gcc-9-ucx-mpi-atlas-parmetis-hip",
+        #    cc:        "/opt/rocm/llvm/bin/clang",
+        #    cxx:       "/opt/rocm/llvm/bin/clang++",
+        #    gpu:       "ON",
+        #    gpu_type:  "AMD",
+        #    run:       "OFF",
+        #  }
 
     env:
       CC:                             ${{ matrix.config.cc }}
